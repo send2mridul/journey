@@ -149,11 +149,11 @@ export const saveTrail = createServerFn({ method: 'POST' })
   .validator((value: unknown) => saveTrailInput.parse(value))
   .handler(async ({ data }) => {
     const { auth, authConfigured } = await import('@/lib/auth');
-    if (!authConfigured) throw new Error('Authentication is not configured yet.');
-    const session = await auth.api.getSession({ headers: getRequestHeaders() });
-    if (!session?.user) throw new Error('Sign in to save your Life Trail.');
+    const session = authConfigured ? await auth.api.getSession({ headers: getRequestHeaders() }) : null;
     const { databaseConfigured, sql } = await import('@/db');
     if (!databaseConfigured) throw new Error('The Life Atlas database is not configured yet.');
+    const { clearAnonymousOwnerCookie, getAnonymousOwnerHash, getOrCreateAnonymousOwnerHash } = await import('@/server/anonymous-owner');
+    const anonymousOwnerHash = session?.user ? getAnonymousOwnerHash() : getOrCreateAnonymousOwnerHash();
 
     const trailId = await sql.begin(async (transaction) => {
       const uniqueCityIds = [...new Set(data.stops.map((stop) => stop.id))];
@@ -162,19 +162,67 @@ export const saveTrail = createServerFn({ method: 'POST' })
       `;
       if (existingCities.length !== uniqueCityIds.length) throw new Error('One or more selected cities no longer exist.');
 
-      const [profile] = await transaction<{ id: string }[]>`
-        INSERT INTO profiles (user_id, display_name)
-        VALUES (${session.user.id}, ${session.user.name})
-        ON CONFLICT (user_id) DO UPDATE SET display_name = EXCLUDED.display_name, updated_at = now()
-        RETURNING id::text AS id
-      `;
-      if (!profile) throw new Error('Could not create a profile for this account.');
-      const [trail] = await transaction<{ id: string }[]>`
-        INSERT INTO life_trails (profile_id, client_draft_id, title)
-        VALUES (${profile.id}::uuid, ${data.clientDraftId}::uuid, ${data.title})
-        ON CONFLICT (profile_id, client_draft_id) DO UPDATE SET title = EXCLUDED.title, updated_at = now()
-        RETURNING id::text AS id
-      `;
+      let trail: { id: string } | undefined;
+
+      if (session?.user) {
+        const [profile] = await transaction<{ id: string }[]>`
+          INSERT INTO profiles (user_id, display_name)
+          VALUES (${session.user.id}, ${session.user.name})
+          ON CONFLICT (user_id) DO UPDATE SET display_name = EXCLUDED.display_name, updated_at = now()
+          RETURNING id::text AS id
+        `;
+        if (!profile) throw new Error('Could not create a profile for this account.');
+
+        if (anonymousOwnerHash) {
+          const [anonymousTrail] = await transaction<{ id: string; clientDraftId: string }[]>`
+            SELECT id::text AS id, client_draft_id::text AS "clientDraftId"
+            FROM life_trails
+            WHERE anonymous_owner_hash = ${anonymousOwnerHash}
+            FOR UPDATE
+          `;
+          if (anonymousTrail) {
+            const [ownedTrail] = await transaction<{ id: string }[]>`
+              SELECT id::text AS id
+              FROM life_trails
+              WHERE profile_id = ${profile.id}::uuid
+                AND client_draft_id = ${anonymousTrail.clientDraftId}::uuid
+              FOR UPDATE
+            `;
+            if (ownedTrail && ownedTrail.id !== anonymousTrail.id) {
+              await transaction`DELETE FROM movement_chapters WHERE trail_id = ${ownedTrail.id}::uuid`;
+              await transaction`UPDATE movement_chapters SET trail_id = ${ownedTrail.id}::uuid, updated_at = now() WHERE trail_id = ${anonymousTrail.id}::uuid`;
+              await transaction`UPDATE life_trails SET title = ${data.title}, updated_at = now() WHERE id = ${ownedTrail.id}::uuid`;
+              await transaction`DELETE FROM life_trails WHERE id = ${anonymousTrail.id}::uuid`;
+              trail = ownedTrail;
+            } else {
+              [trail] = await transaction<{ id: string }[]>`
+                UPDATE life_trails
+                SET profile_id = ${profile.id}::uuid, anonymous_owner_hash = NULL, title = ${data.title}, claimed_at = now(), updated_at = now()
+                WHERE id = ${anonymousTrail.id}::uuid
+                RETURNING id::text AS id
+              `;
+            }
+          }
+        }
+
+        if (!trail) {
+          [trail] = await transaction<{ id: string }[]>`
+            INSERT INTO life_trails (profile_id, client_draft_id, title)
+            VALUES (${profile.id}::uuid, ${data.clientDraftId}::uuid, ${data.title})
+            ON CONFLICT (profile_id, client_draft_id) DO UPDATE SET title = EXCLUDED.title, updated_at = now()
+            RETURNING id::text AS id
+          `;
+        }
+      } else {
+        [trail] = await transaction<{ id: string }[]>`
+          INSERT INTO life_trails (anonymous_owner_hash, client_draft_id, title)
+          VALUES (${anonymousOwnerHash}, ${data.clientDraftId}::uuid, ${data.title})
+          ON CONFLICT (anonymous_owner_hash) DO UPDATE
+          SET client_draft_id = EXCLUDED.client_draft_id, title = EXCLUDED.title, updated_at = now()
+          RETURNING id::text AS id
+        `;
+      }
+
       if (!trail) throw new Error('Could not create this Life Trail.');
       await transaction`DELETE FROM movement_chapters WHERE trail_id = ${trail.id}::uuid`;
       const chapters = data.stops.slice(1).map((stop, index) => ({
@@ -192,27 +240,90 @@ export const saveTrail = createServerFn({ method: 'POST' })
       return trail.id;
     });
 
-    return { saved: true, trailId };
+    if (session?.user && anonymousOwnerHash) clearAnonymousOwnerCookie();
+    return { saved: true, trailId, ownership: session?.user ? 'account' as const : 'anonymous' as const };
   });
 
 export const getMyLatestTrail = createServerFn({ method: 'GET' })
   .handler(async () => {
     const { auth, authConfigured } = await import('@/lib/auth');
-    if (!authConfigured) return { authenticated: false, trail: null };
-    const session = await auth.api.getSession({ headers: getRequestHeaders() });
-    if (!session?.user) return { authenticated: false, trail: null };
+    const session = authConfigured ? await auth.api.getSession({ headers: getRequestHeaders() }) : null;
     const { databaseConfigured, sql } = await import('@/db');
-    if (!databaseConfigured) return { authenticated: true, trail: null };
+    if (!databaseConfigured) return { authenticated: Boolean(session?.user), ownership: null, trail: null };
+    const { clearAnonymousOwnerCookie, getAnonymousOwnerHash } = await import('@/server/anonymous-owner');
+    const anonymousOwnerHash = getAnonymousOwnerHash();
+    let claimedAnonymousTrail = false;
 
-    const [trail] = await sql<Array<{ id: string; clientDraftId: string; title: string }>>`
-      SELECT trail.id::text AS id, trail.client_draft_id::text AS "clientDraftId", trail.title
-      FROM life_trails trail
-      JOIN profiles profile ON profile.id = trail.profile_id
-      WHERE profile.user_id = ${session.user.id}
-      ORDER BY trail.updated_at DESC, trail.created_at DESC
-      LIMIT 1
-    `;
-    if (!trail) return { authenticated: true, trail: null };
+    const trail = await sql.begin(async (transaction) => {
+      if (session?.user) {
+        const [profile] = await transaction<{ id: string }[]>`
+          INSERT INTO profiles (user_id, display_name)
+          VALUES (${session.user.id}, ${session.user.name})
+          ON CONFLICT (user_id) DO UPDATE SET display_name = EXCLUDED.display_name, updated_at = now()
+          RETURNING id::text AS id
+        `;
+        if (!profile) throw new Error('Could not load this account.');
+
+        if (anonymousOwnerHash) {
+          const [anonymousTrail] = await transaction<{ id: string; clientDraftId: string; title: string }[]>`
+            SELECT id::text AS id, client_draft_id::text AS "clientDraftId", title
+            FROM life_trails
+            WHERE anonymous_owner_hash = ${anonymousOwnerHash}
+            FOR UPDATE
+          `;
+          if (anonymousTrail) {
+            const [ownedTrail] = await transaction<{ id: string }[]>`
+              SELECT id::text AS id
+              FROM life_trails
+              WHERE profile_id = ${profile.id}::uuid
+                AND client_draft_id = ${anonymousTrail.clientDraftId}::uuid
+              FOR UPDATE
+            `;
+            if (ownedTrail && ownedTrail.id !== anonymousTrail.id) {
+              await transaction`DELETE FROM movement_chapters WHERE trail_id = ${ownedTrail.id}::uuid`;
+              await transaction`UPDATE movement_chapters SET trail_id = ${ownedTrail.id}::uuid, updated_at = now() WHERE trail_id = ${anonymousTrail.id}::uuid`;
+              await transaction`UPDATE life_trails SET title = ${anonymousTrail.title}, claimed_at = COALESCE(claimed_at, now()), updated_at = now() WHERE id = ${ownedTrail.id}::uuid`;
+              await transaction`DELETE FROM life_trails WHERE id = ${anonymousTrail.id}::uuid`;
+              claimedAnonymousTrail = true;
+              const [merged] = await transaction<Array<{ id: string; clientDraftId: string; title: string }>>`
+                SELECT id::text AS id, client_draft_id::text AS "clientDraftId", title FROM life_trails WHERE id = ${ownedTrail.id}::uuid
+              `;
+              return merged;
+            }
+            const [claimed] = await transaction<Array<{ id: string; clientDraftId: string; title: string }>>`
+              UPDATE life_trails
+              SET profile_id = ${profile.id}::uuid, anonymous_owner_hash = NULL, claimed_at = now(), updated_at = now()
+              WHERE id = ${anonymousTrail.id}::uuid
+              RETURNING id::text AS id, client_draft_id::text AS "clientDraftId", title
+            `;
+            claimedAnonymousTrail = Boolean(claimed);
+            if (claimed) return claimed;
+          }
+        }
+
+        const [owned] = await transaction<Array<{ id: string; clientDraftId: string; title: string }>>`
+          SELECT trail.id::text AS id, trail.client_draft_id::text AS "clientDraftId", trail.title
+          FROM life_trails trail
+          WHERE trail.profile_id = ${profile.id}::uuid
+          ORDER BY trail.updated_at DESC, trail.created_at DESC
+          LIMIT 1
+        `;
+        return owned;
+      }
+
+      if (!anonymousOwnerHash) return undefined;
+      const [anonymous] = await transaction<Array<{ id: string; clientDraftId: string; title: string }>>`
+        SELECT id::text AS id, client_draft_id::text AS "clientDraftId", title
+        FROM life_trails
+        WHERE anonymous_owner_hash = ${anonymousOwnerHash}
+        LIMIT 1
+      `;
+      return anonymous;
+    });
+
+    if (claimedAnonymousTrail) clearAnonymousOwnerCookie();
+    const ownership = session?.user ? 'account' as const : anonymousOwnerHash ? 'anonymous' as const : null;
+    if (!trail) return { authenticated: Boolean(session?.user), ownership, trail: null };
 
     const chapters = await sql<Array<{
       position: number;
@@ -240,7 +351,7 @@ export const getMyLatestTrail = createServerFn({ method: 'GET' })
       WHERE chapter.trail_id = ${trail.id}::uuid
       ORDER BY chapter.position
     `;
-    if (!chapters.length) return { authenticated: true, trail: null };
+    if (!chapters.length) return { authenticated: Boolean(session?.user), ownership, trail: null };
 
     const first = chapters[0]!;
     const stops: TrailStop[] = [{
@@ -264,7 +375,8 @@ export const getMyLatestTrail = createServerFn({ method: 'GET' })
     }))];
 
     return {
-      authenticated: true,
+      authenticated: Boolean(session?.user),
+      ownership,
       trail: {
         id: trail.id,
         clientDraftId: trail.clientDraftId,

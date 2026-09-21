@@ -22,6 +22,13 @@
       "when": 1789966821989,
       "tag": "0002_compact_location_types",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789992666746,
+      "tag": "0003_puzzling_vindicator",
+      "breakpoints": true
     }
   ]
 }

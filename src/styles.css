@@ -30,6 +30,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .mapboxgl-ctrl-group { overflow: hidden; border: 1px solid var(--border) !important; border-radius: 999px !important; background: color-mix(in oklab, var(--card) 84%, transparent) !important; box-shadow: var(--shadow-soft) !important; backdrop-filter: blur(15px); }
 .mapboxgl-popup-content { border: 1px solid var(--border); border-radius: 8px !important; padding: 15px 17px !important; background: color-mix(in oklab, var(--card) 94%, transparent) !important; box-shadow: var(--shadow-soft) !important; backdrop-filter: blur(18px); }
 .atlas-popup strong, .atlas-popup span, .atlas-popup small { display: block; }.atlas-popup span { margin-top: 3px; color: var(--primary); }.atlas-popup small { margin-top: 9px; line-height: 1.55; color: var(--muted-foreground); }
+.map-recenter { position: absolute; z-index: 8; left: 20px; top: 84px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid color-mix(in oklab, var(--card) 65%, var(--border)); border-radius: 999px; background: color-mix(in oklab, var(--card) 86%, transparent); padding: 9px 13px; color: var(--foreground); font-size: .68rem; box-shadow: var(--shadow-soft); backdrop-filter: blur(18px); }.map-recenter:hover { border-color: color-mix(in oklab, var(--primary) 45%, var(--border)); background: var(--card); }.map-recenter svg { width: 14px; height: 14px; color: var(--primary); }
 
 header { box-shadow: 0 1px color-mix(in oklab, var(--card) 55%, transparent); }
 .brand-mark { display: grid; place-items: center; width: 31px; height: 31px; border: 1px solid color-mix(in oklab, var(--primary) 35%, transparent); border-radius: 50%; background: color-mix(in oklab, var(--card) 78%, transparent); color: var(--primary); }
@@ -89,10 +90,7 @@ footer { display: flex; justify-content: space-between; gap: 20px; border-top: 1
 .trail-actions button { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid var(--border); border-radius: 50%; background: var(--card); color: var(--muted-foreground); }
 .trail-actions button:hover { color: var(--primary); }.trail-actions button:disabled { cursor: not-allowed; opacity: .28; }.trail-actions svg { width: 13px; }
 
-.save-account { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; font-size: .76rem; }.save-account .primary-button { min-height: 44px; }.save-account svg { width: 15px; }
-.email-auth { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in oklab, var(--card) 72%, transparent); }
-.email-auth input { min-height: 44px; border: 1px solid var(--border); border-radius: 7px; background: var(--card); padding: 0 11px; font-size: .76rem; }
-.email-auth .primary-button { min-height: 44px; }.auth-tabs { grid-column: 1/-1; display: flex; gap: 4px; }.auth-tabs button { border: 0; border-radius: 999px; background: transparent; padding: 7px 10px; color: var(--muted-foreground); font-size: .7rem; }.auth-tabs button.active { background: var(--foreground); color: var(--primary-foreground); }
+.save-account { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; font-size: .76rem; }.save-account > span { display: flex; align-items: center; gap: 7px; }.save-account svg { width: 15px; }.google-only-auth { display: grid; gap: 9px; }.google-only-auth .primary-button { min-height: 48px; }.persistence-state { margin: 0; color: var(--muted-foreground); font-size: .72rem; }.persistence-state::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--secondary); box-shadow: 0 0 0 4px color-mix(in oklab, var(--secondary) 12%, transparent); }.persistence-state.is-error { color: #963a28; }.persistence-state.is-error::before { background: #963a28; }
 
 .explore-filter-card { display: grid; grid-template-columns: 1.15fr 1.15fr .62fr .62fr .72fr; gap: 7px; margin-top: 22px; max-width: 1100px; border: 1px solid color-mix(in oklab, var(--card) 55%, var(--border)); border-radius: 12px; background: color-mix(in oklab, var(--card) 75%, transparent); padding: 9px; box-shadow: 0 14px 42px color-mix(in oklab, var(--foreground) 10%, transparent); backdrop-filter: blur(25px) saturate(1.1); }
 .explore-filter-card .place-menu { z-index: 120; }.explore-filter-card .clear-filters { grid-column: 1/-1; justify-self: start; padding-block: .45rem; }
@@ -109,6 +107,7 @@ footer { display: flex; justify-content: space-between; gap: 20px; border-top: 1
   html, body { overflow-x: clip; }
   .atlas-hero { min-height: 100svh; }.atlas-hero > div:nth-child(2) { min-height: calc(100svh - 4rem); }.journey-composer { margin-top: 110px; }
   .trail-actions { position: static; margin: -46px 0 24px 60px; opacity: 1; }
-  .email-auth, .explore-filter-card { grid-template-columns: 1fr; }.email-auth > *, .explore-filter-card > *, .explore-filter-card > :last-of-type { grid-column: 1; }
+  .explore-filter-card { grid-template-columns: 1fr; }.explore-filter-card > *, .explore-filter-card > :last-of-type { grid-column: 1; }
   .explore-filter-card { max-height: none; overflow: visible; }.fingerprint-summary { gap-block: 8px; }
+  .map-recenter { left: 14px; top: 76px; padding: 8px 11px; }
 }

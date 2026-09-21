@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  check,
   index,
   integer,
   pgEnum,
@@ -11,6 +12,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const visibilityEnum = pgEnum('chapter_visibility', ['PUBLIC', 'ANONYMOUS', 'PRIVATE']);
 
@@ -96,14 +98,18 @@ export const profiles = pgTable('profiles', {
 
 export const lifeTrails = pgTable('life_trails', {
   id: uuid('id').primaryKey().defaultRandom(),
-  profileId: uuid('profile_id').notNull().references(() => profiles.id, { onDelete: 'cascade' }),
+  profileId: uuid('profile_id').references(() => profiles.id, { onDelete: 'cascade' }),
+  anonymousOwnerHash: text('anonymous_owner_hash'),
   clientDraftId: uuid('client_draft_id').notNull(),
   title: text('title').notNull().default('My Life Trail'),
+  claimedAt: timestamp('claimed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   index('life_trails_profile_idx').on(table.profileId),
   uniqueIndex('life_trails_profile_draft_idx').on(table.profileId, table.clientDraftId),
+  uniqueIndex('life_trails_anonymous_owner_idx').on(table.anonymousOwnerHash),
+  check('life_trails_owner_check', sql`${table.profileId} IS NOT NULL OR ${table.anonymousOwnerHash} IS NOT NULL`),
 ]);
 
 export const movementChapters = pgTable('movement_chapters', {

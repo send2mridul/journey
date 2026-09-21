@@ -11,17 +11,15 @@ import {
   LocateFixed,
   LockKeyhole,
   LogOut,
-  Mail,
   MapPin,
   Pencil,
   Plus,
-  Save,
   Search,
   Sparkles,
   Trash2,
   X,
 } from 'lucide-react';
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { authClient } from '@/lib/auth-client';
 import {
   distanceKm,
@@ -61,6 +59,8 @@ function Index() {
   const [trail, setTrail] = useState<TrailStop[]>([]);
   const [draftId, setDraftId] = useState('');
   const [draftReady, setDraftReady] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [persistence, setPersistence] = useState<'loading' | 'idle' | 'saving' | 'saved' | 'error'>('loading');
   const [activeChapter, setActiveChapter] = useState(0);
   const [revealRun, setRevealRun] = useState(0);
   const [formError, setFormError] = useState('');
@@ -68,45 +68,32 @@ function Index() {
   const [statsConfigured, setStatsConfigured] = useState(true);
   const [editor, setEditor] = useState<{ mode: 'before' | 'after' | 'move' | 'edit'; index?: number } | null>(null);
   const revealRef = useRef<HTMLElement>(null);
-  const loadedAccountRef = useRef<string | null>(null);
+  const loadedOwnerRef = useRef<string | null>(null);
   const routeStats = useServerFn(getRouteStats);
   const loadMyLatestTrail = useServerFn(getMyLatestTrail);
-  const { data: accountSession } = authClient.useSession();
+  const saveCurrentTrail = useServerFn(saveTrail);
+  const { data: accountSession, isPending: sessionPending } = authClient.useSession();
 
   const userRoutes = useMemo(() => routesFromTrail(trail), [trail]);
   const selectedRoute = userRoutes[activeChapter] ?? userRoutes[0];
   const fingerprint = useMemo(() => fingerprintFor(trail), [trail]);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem('life-atlas-draft');
-    if (saved) {
-      try {
-        const draft = JSON.parse(saved) as { id?: string; trail?: TrailStop[]; revealed?: boolean };
-        if (draft.id) setDraftId(draft.id);
-        const first = draft.trail?.[0];
-        const second = draft.trail?.[1];
-        if (draft.trail && first && second) {
-          setTrail(draft.trail);
-          setOrigin(first);
-          setDestination(second);
-          setRevealed(Boolean(draft.revealed));
-        }
-      } catch {
-        window.localStorage.removeItem('life-atlas-draft');
-      }
-    }
-    setDraftId((value) => value || window.crypto.randomUUID());
+    window.localStorage.removeItem('life-atlas-draft');
+    window.localStorage.removeItem('life-atlas-save-pending');
+    setDraftId(window.crypto.randomUUID());
     setDraftReady(true);
   }, []);
 
   useEffect(() => {
-    const userId = accountSession?.user?.id;
-    if (!draftReady || !draftId || !userId || loadedAccountRef.current === userId) return;
+    const ownerKey = accountSession?.user?.id ?? 'anonymous';
+    if (!draftReady || !draftId || sessionPending || loadedOwnerRef.current === ownerKey) return;
     let current = true;
-    loadedAccountRef.current = userId;
+    loadedOwnerRef.current = ownerKey;
+    setPersistence('loading');
     void loadMyLatestTrail().then((response) => {
       const saved = response.trail;
-      if (!current || !saved || (trail.length >= 2 && saved.clientDraftId !== draftId)) return;
+      if (!current || !saved) return;
       const first = saved.stops[0];
       const second = saved.stops[1];
       if (!first || !second) return;
@@ -117,16 +104,39 @@ function Index() {
       setActiveChapter(0);
       setRevealed(true);
       setRevealRun((value) => value + 1);
+      setPersistence('saved');
     }).catch(() => {
-      if (current) loadedAccountRef.current = null;
+      if (current) {
+        loadedOwnerRef.current = null;
+        setPersistence('error');
+      }
+    }).finally(() => {
+      if (current) {
+        setHydrated(true);
+        setPersistence((value) => value === 'loading' ? 'idle' : value);
+      }
     });
     return () => { current = false; };
-  }, [accountSession?.user?.id, draftId, draftReady]);
+  }, [accountSession?.user?.id, draftId, draftReady, sessionPending]);
 
   useEffect(() => {
-    if (!draftId || trail.length < 2) return;
-    window.localStorage.setItem('life-atlas-draft', JSON.stringify({ id: draftId, trail, revealed }));
-  }, [draftId, trail, revealed]);
+    if (!hydrated || !draftId || trail.length < 2 || !revealed) return;
+    const timer = window.setTimeout(async () => {
+      setPersistence('saving');
+      try {
+        await saveCurrentTrail({ data: {
+          clientDraftId: draftId,
+          title: 'My Life Trail',
+          visibility: 'PRIVATE',
+          stops: trail.map((stop) => ({ id: stop.id, arrivalYear: stop.arrivalYear, reason: stop.reason as (typeof reasons)[number] | undefined })),
+        } });
+        setPersistence('saved');
+      } catch {
+        setPersistence('error');
+      }
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [draftId, hydrated, revealed, trail]);
 
   async function refreshRouteStats(from: Place, to: Place) {
     try {
@@ -217,13 +227,13 @@ function Index() {
 
     <section id="top" className="atlas-hero relative min-h-[100svh] overflow-hidden pt-16">
       <div className="absolute inset-0"><Suspense fallback={<MapLoading />}><AtlasMap routes={[]} year={currentYear} cinematic /></Suspense><div className="map-wash absolute inset-0" /></div>
-      <div className="relative z-10 mx-auto flex min-h-[calc(100svh-4rem)] max-w-[1480px] flex-col justify-between px-5 pb-8 pt-[9vh] md:px-10">
+      <div className="pointer-events-none relative z-10 mx-auto flex min-h-[calc(100svh-4rem)] max-w-[1480px] flex-col justify-between px-5 pb-8 pt-[9vh] md:px-10">
         <div className="hero-copy max-w-3xl">
           <p className="eyebrow">A living atlas of human journeys</p>
           <h1 className="mt-5 font-editorial text-6xl leading-[.94] md:text-8xl lg:text-[7rem]">Where did life<br /><em>take you?</em></h1>
           <p className="mt-6 max-w-lg text-lg leading-8 text-muted-foreground">Add one chapter of your story and see how your journey connects to the world.</p>
         </div>
-        <div id="journey" className="journey-composer max-w-6xl">
+        <div id="journey" className="journey-composer pointer-events-auto max-w-6xl">
           <div className="grid gap-2 lg:grid-cols-[1.25fr_1.25fr_.52fr_auto]">
             <PlaceSearch label="I was in" value={origin} onSelect={setOrigin} icon={<LocateFixed />} />
             <PlaceSearch label="Then I moved to" value={destination} onSelect={setDestination} icon={<MapPin />} />
@@ -239,9 +249,9 @@ function Index() {
     <section ref={revealRef} className={`reveal-stage ${revealed ? 'is-revealed' : ''}`}>
       {!revealed ? <div className="mx-auto max-w-lg py-28 text-center"><Sparkles className="mx-auto text-primary" /><h2 className="mt-5 font-editorial text-4xl">Your next chapter is waiting.</h2><p className="mt-3 text-muted-foreground">Choose two places above to see your movement fingerprint.</p></div> :
         <div className="relative min-h-[86svh] overflow-hidden">
-          <div className="absolute inset-0"><Suspense fallback={<MapLoading />}><AtlasMap routes={userRoutes} trail={trail} cinematic activeRouteIndex={activeChapter} revealKey={revealRun} /></Suspense><div className="reveal-wash absolute inset-0" /></div>
-          <div className="relative z-10 mx-auto flex min-h-[86svh] max-w-[1480px] flex-col justify-end px-5 py-8 md:items-end md:px-10 md:py-12">
-            <div key={revealRun} className="reveal-sheet max-w-[370px]">
+          <div className="absolute inset-0"><Suspense fallback={<MapLoading />}><AtlasMap routes={userRoutes} trail={trail} cinematic activeRouteIndex={activeChapter} /></Suspense><div className="reveal-wash absolute inset-0" /></div>
+          <div className="pointer-events-none relative z-10 mx-auto flex min-h-[86svh] max-w-[1480px] flex-col justify-end px-5 py-8 md:items-end md:px-10 md:py-12">
+            <div key={revealRun} className="reveal-sheet pointer-events-auto max-w-[370px]">
               <p className="eyebrow">Your Movement Fingerprint</p>
               <h2 className="mt-3 font-editorial text-4xl md:text-5xl">{selectedRoute?.from.city} <span>→</span> {selectedRoute?.to.city}</h2>
               <p className="mt-2 text-sm text-muted-foreground">{selectedRoute?.year} · {selectedRoute?.reason}</p>
@@ -270,7 +280,7 @@ function Index() {
           {editor && <ChapterEditor editor={editor} trail={trail} onClose={() => setEditor(null)} onSave={commitChapter} />}
         </div>
       </div>
-      <SaveTrailPanel trail={trail} draftId={draftId} />
+      <SaveTrailPanel trail={trail} draftId={draftId} persistence={persistence} />
     </div></section>}
 
     <ExploreAtlas />
@@ -333,69 +343,42 @@ function ChapterEditor({ editor, trail, onClose, onSave }: { editor: { mode: 'be
   </div>;
 }
 
-function SaveTrailPanel({ trail, draftId }: { trail: TrailStop[]; draftId: string }) {
-  const { data: session, isPending, refetch } = authClient.useSession();
+function SaveTrailPanel({ trail, draftId, persistence }: { trail: TrailStop[]; draftId: string; persistence: 'loading' | 'idle' | 'saving' | 'saved' | 'error' }) {
+  const { data: session, isPending } = authClient.useSession();
   const save = useServerFn(saveTrail);
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
-  const [showEmail, setShowEmail] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
-  async function persist() {
-    if (!draftId || saving) return;
-    setSaving(true);
-    setMessage('');
+  async function google() {
+    if (!draftId) return;
     try {
       await save({ data: {
         clientDraftId: draftId,
         title: 'My Life Trail',
         visibility: 'PRIVATE',
-        stops: trail.map((stop) => ({ id: stop.id, arrivalYear: stop.arrivalYear, reason: stop.reason as (typeof reasons)[number] | undefined })),
+          stops: trail.map((stop) => ({ id: stop.id, arrivalYear: stop.arrivalYear, reason: stop.reason as (typeof reasons)[number] | undefined })),
       } });
-      window.localStorage.removeItem('life-atlas-save-pending');
-      setMessage('Your private Life Trail is saved.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Your Life Trail could not be saved.');
-    } finally {
-      setSaving(false);
+      return;
     }
-  }
-
-  useEffect(() => {
-    if (session?.user && window.localStorage.getItem('life-atlas-save-pending') === 'true') void persist();
-  }, [session?.user?.id]);
-
-  async function google() {
-    window.localStorage.setItem('life-atlas-save-pending', 'true');
     const result = await authClient.signIn.social({ provider: 'google', callbackURL: `${window.location.origin}/#life-trail` });
     if (result.error) setMessage(result.error.message ?? 'Google sign-in is not configured yet.');
   }
 
-  async function email(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const email = String(form.get('email') ?? '');
-    const password = String(form.get('password') ?? '');
-    const name = String(form.get('name') ?? email.split('@')[0]);
-    window.localStorage.setItem('life-atlas-save-pending', 'true');
-    const result = authMode === 'signup'
-      ? await authClient.signUp.email({ email, password, name })
-      : await authClient.signIn.email({ email, password });
-    if (result.error) {
-      setMessage(result.error.message ?? 'Sign-in failed.');
-      return;
-    }
-    await refetch();
-  }
+  const persistenceCopy = persistence === 'saving' || persistence === 'loading'
+    ? 'Saving privately…'
+    : persistence === 'error'
+      ? 'Could not save this change. We will retry when the trail changes.'
+      : 'Saved privately in this browser.';
 
   return <div className="save-invite">
-    <div><p className="eyebrow">Keep your story</p><h3 className="mt-3 font-editorial text-4xl">Save your Life Trail</h3><p className="mt-2 text-sm text-muted-foreground">Your first result is yours. Sign in only when you’re ready to save it.</p></div>
-    {isPending ? <LoaderCircle className="search-spinner" /> : session?.user ? <div className="save-account"><span>Signed in as {session.user.email}</span><button className="primary-button" disabled={saving} onClick={() => void persist()}>{saving ? <LoaderCircle /> : <Save />}Save privately</button><button className="auth-button" onClick={() => void authClient.signOut()}><LogOut />Sign out</button></div> : <div>
-      <div className="grid gap-2 sm:grid-cols-2"><button onClick={() => void google()} className="auth-button"><span className="google-g">G</span>Continue with Google</button><button onClick={() => setShowEmail((value) => !value)} className="auth-button"><Mail />Continue with Email</button></div>
-      {showEmail && <form className="email-auth" onSubmit={(event) => void email(event)}><div className="auth-tabs"><button type="button" className={authMode === 'signin' ? 'active' : ''} onClick={() => setAuthMode('signin')}>Sign in</button><button type="button" className={authMode === 'signup' ? 'active' : ''} onClick={() => setAuthMode('signup')}>Create account</button></div>{authMode === 'signup' && <input name="name" placeholder="Your name" autoComplete="name" required />}<input name="email" type="email" placeholder="Email address" autoComplete="email" required /><input name="password" type="password" placeholder="Password · 10+ characters" minLength={10} autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} required /><button className="primary-button" type="submit">{authMode === 'signup' ? 'Create account' : 'Sign in'}<ArrowRight /></button></form>}
+    <div><p className="eyebrow">Keep your story</p><h3 className="mt-3 font-editorial text-4xl">Keep your Life Atlas with you</h3><p className="mt-2 text-sm text-muted-foreground">Your journey is already saved here. Google adds cross-device access and recovery.</p></div>
+    {isPending ? <LoaderCircle className="search-spinner" /> : session?.user ? <div className="save-account"><span><Check />Saved to {session.user.email}</span><button className="auth-button" onClick={() => void authClient.signOut()}><LogOut />Sign out</button></div> : <div className="google-only-auth">
+      <p className={`persistence-state ${persistence === 'error' ? 'is-error' : ''}`}>{persistenceCopy}</p>
+      <button onClick={() => void google()} className="primary-button"><span className="google-g">G</span>Continue with Google</button>
     </div>}
     {message && <p className="save-message" role="status">{message}</p>}
-    <p className="col-span-full flex items-center gap-1.5 text-xs text-muted-foreground"><LockKeyhole className="size-3" />Saved chapters are Private by default. Public and Anonymous sharing can be chosen later.</p>
+    <p className="col-span-full flex items-center gap-1.5 text-xs text-muted-foreground"><LockKeyhole className="size-3" />Your Life Trail is private by default.</p>
   </div>;
 }
 
