@@ -31,6 +31,7 @@ import {
   type TrailStop,
 } from '@/lib/atlas-data';
 import { getExploreRoutes, getMyLatestTrail, getRouteStats, saveTrail, searchPlaces } from '@/server/atlas';
+import { getAuthCapabilities } from '@/server/auth-capabilities';
 
 const AtlasMap = lazy(() => import('@/components/AtlasMap'));
 const reasons = ['Career', 'Study', 'Family', 'Love', 'Adventure', 'Opportunity', 'Other'] as const;
@@ -346,9 +347,27 @@ function ChapterEditor({ editor, trail, onClose, onSave }: { editor: { mode: 'be
 function SaveTrailPanel({ trail, draftId, persistence }: { trail: TrailStop[]; draftId: string; persistence: 'loading' | 'idle' | 'saving' | 'saved' | 'error' }) {
   const { data: session, isPending } = authClient.useSession();
   const save = useServerFn(saveTrail);
+  const loadAuthCapabilities = useServerFn(getAuthCapabilities);
   const [message, setMessage] = useState('');
+  const [googleAvailable, setGoogleAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let current = true;
+    void loadAuthCapabilities()
+      .then((capabilities) => {
+        if (current) setGoogleAvailable(capabilities.google);
+      })
+      .catch(() => {
+        if (current) setGoogleAvailable(false);
+      });
+    return () => { current = false; };
+  }, [loadAuthCapabilities]);
 
   async function google() {
+    if (!googleAvailable) {
+      setMessage('Google sign-in is waiting for production OAuth credentials. Your trail is still saved privately here.');
+      return;
+    }
     if (!draftId) return;
     try {
       await save({ data: {
@@ -375,7 +394,7 @@ function SaveTrailPanel({ trail, draftId, persistence }: { trail: TrailStop[]; d
     <div><p className="eyebrow">Keep your story</p><h3 className="mt-3 font-editorial text-4xl">Keep your Life Atlas with you</h3><p className="mt-2 text-sm text-muted-foreground">Your journey is already saved here. Google adds cross-device access and recovery.</p></div>
     {isPending ? <LoaderCircle className="search-spinner" /> : session?.user ? <div className="save-account"><span><Check />Saved to {session.user.email}</span><button className="auth-button" onClick={() => void authClient.signOut()}><LogOut />Sign out</button></div> : <div className="google-only-auth">
       <p className={`persistence-state ${persistence === 'error' ? 'is-error' : ''}`}>{persistenceCopy}</p>
-      <button onClick={() => void google()} className="primary-button"><span className="google-g">G</span>Continue with Google</button>
+      <button onClick={() => void google()} className="primary-button" disabled={googleAvailable !== true}><span className="google-g">G</span>{googleAvailable === false ? 'Google sign-in needs credentials' : 'Continue with Google'}</button>
     </div>}
     {message && <p className="save-message" role="status">{message}</p>}
     <p className="col-span-full flex items-center gap-1.5 text-xs text-muted-foreground"><LockKeyhole className="size-3" />Your Life Trail is private by default.</p>
