@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start';
 import { getRequestHeaders } from '@tanstack/react-start/server';
 import { z } from 'zod';
-import type { AtlasRoute, Place } from '@/lib/atlas-data';
+import type { AtlasRoute, Place, TrailStop } from '@/lib/atlas-data';
 
 const privacyThreshold = 5;
 const placeId = z.string().regex(/^\d+$/);
@@ -26,8 +26,14 @@ export const searchPlaces = createServerFn({ method: 'GET' })
       FROM cities city
       JOIN countries country ON country.code = city.country_code
       LEFT JOIN states state ON state.id = city.state_id
-      WHERE lower(city.name) LIKE lower(${data.query}) || '%'
-        OR similarity(lower(city.name), lower(${data.query})) >= 0.34
+      WHERE city.population > 0
+        AND (
+          lower(city.name) LIKE lower(${data.query}) || '%'
+          OR (
+            lower(city.name) % lower(${data.query})
+            AND similarity(lower(city.name), lower(${data.query})) >= 0.34
+          )
+        )
       ORDER BY
         (lower(city.name) = lower(${data.query})) DESC,
         (lower(city.name) LIKE lower(${data.query}) || '%') DESC,
@@ -50,8 +56,8 @@ export const getRouteStats = createServerFn({ method: 'GET' })
     const [row] = await sql<{ count: number }[]>`
       SELECT count(DISTINCT trail_id)::int AS count
       FROM movement_chapters
-      WHERE from_city_id = ${data.fromCityId}::bigint
-        AND to_city_id = ${data.toCityId}::bigint
+      WHERE from_city_id = ${data.fromCityId}::integer
+        AND to_city_id = ${data.toCityId}::integer
         AND visibility IN ('PUBLIC', 'ANONYMOUS')
     `;
     const count = row?.count ?? 0;
@@ -99,8 +105,8 @@ export const getExploreRoutes = createServerFn({ method: 'GET' })
       JOIN countries destination_country ON destination_country.code = destination.country_code
       LEFT JOIN states destination_state ON destination_state.id = destination.state_id
       WHERE chapter.visibility IN ('PUBLIC', 'ANONYMOUS')
-        AND (${fromCityId}::bigint IS NULL OR chapter.from_city_id = ${fromCityId}::bigint)
-        AND (${toCityId}::bigint IS NULL OR chapter.to_city_id = ${toCityId}::bigint)
+        AND (${fromCityId}::integer IS NULL OR chapter.from_city_id = ${fromCityId}::integer)
+        AND (${toCityId}::integer IS NULL OR chapter.to_city_id = ${toCityId}::integer)
         AND chapter.move_year BETWEEN ${yearFrom} AND ${yearTo}
         AND (${selectedReason}::text IS NULL OR chapter.reason = ${selectedReason})
         AND (${selectedCountry}::text IS NULL OR origin.country_code = ${selectedCountry} OR destination.country_code = ${selectedCountry})
@@ -152,7 +158,7 @@ export const saveTrail = createServerFn({ method: 'POST' })
     const trailId = await sql.begin(async (transaction) => {
       const uniqueCityIds = [...new Set(data.stops.map((stop) => stop.id))];
       const existingCities = await transaction<{ id: string }[]>`
-        SELECT id::text AS id FROM cities WHERE id = ANY(${uniqueCityIds}::bigint[])
+        SELECT id::text AS id FROM cities WHERE id = ANY(${uniqueCityIds}::integer[])
       `;
       if (existingCities.length !== uniqueCityIds.length) throw new Error('One or more selected cities no longer exist.');
 
@@ -187,4 +193,84 @@ export const saveTrail = createServerFn({ method: 'POST' })
     });
 
     return { saved: true, trailId };
+  });
+
+export const getMyLatestTrail = createServerFn({ method: 'GET' })
+  .handler(async () => {
+    const { auth, authConfigured } = await import('@/lib/auth');
+    if (!authConfigured) return { authenticated: false, trail: null };
+    const session = await auth.api.getSession({ headers: getRequestHeaders() });
+    if (!session?.user) return { authenticated: false, trail: null };
+    const { databaseConfigured, sql } = await import('@/db');
+    if (!databaseConfigured) return { authenticated: true, trail: null };
+
+    const [trail] = await sql<Array<{ id: string; clientDraftId: string; title: string }>>`
+      SELECT trail.id::text AS id, trail.client_draft_id::text AS "clientDraftId", trail.title
+      FROM life_trails trail
+      JOIN profiles profile ON profile.id = trail.profile_id
+      WHERE profile.user_id = ${session.user.id}
+      ORDER BY trail.updated_at DESC, trail.created_at DESC
+      LIMIT 1
+    `;
+    if (!trail) return { authenticated: true, trail: null };
+
+    const chapters = await sql<Array<{
+      position: number;
+      moveYear: number;
+      reason: string;
+      visibility: 'PUBLIC' | 'ANONYMOUS' | 'PRIVATE';
+      fromId: string; fromCity: string; fromRegion: string | null; fromCountry: string; fromCountryCode: string; fromLatitude: number; fromLongitude: number;
+      toId: string; toCity: string; toRegion: string | null; toCountry: string; toCountryCode: string; toLatitude: number; toLongitude: number;
+    }>>`
+      SELECT
+        chapter.position, chapter.move_year AS "moveYear", chapter.reason, chapter.visibility,
+        origin.id::text AS "fromId", origin.name AS "fromCity", origin_state.name AS "fromRegion",
+        origin_country.name AS "fromCountry", origin_country.code AS "fromCountryCode",
+        origin.latitude AS "fromLatitude", origin.longitude AS "fromLongitude",
+        destination.id::text AS "toId", destination.name AS "toCity", destination_state.name AS "toRegion",
+        destination_country.name AS "toCountry", destination_country.code AS "toCountryCode",
+        destination.latitude AS "toLatitude", destination.longitude AS "toLongitude"
+      FROM movement_chapters chapter
+      JOIN cities origin ON origin.id = chapter.from_city_id
+      JOIN countries origin_country ON origin_country.code = origin.country_code
+      LEFT JOIN states origin_state ON origin_state.id = origin.state_id
+      JOIN cities destination ON destination.id = chapter.to_city_id
+      JOIN countries destination_country ON destination_country.code = destination.country_code
+      LEFT JOIN states destination_state ON destination_state.id = destination.state_id
+      WHERE chapter.trail_id = ${trail.id}::uuid
+      ORDER BY chapter.position
+    `;
+    if (!chapters.length) return { authenticated: true, trail: null };
+
+    const first = chapters[0]!;
+    const stops: TrailStop[] = [{
+      id: first.fromId,
+      city: first.fromCity,
+      region: first.fromRegion,
+      country: first.fromCountry,
+      countryCode: first.fromCountryCode,
+      latitude: first.fromLatitude,
+      longitude: first.fromLongitude,
+    }, ...chapters.map((chapter) => ({
+      id: chapter.toId,
+      city: chapter.toCity,
+      region: chapter.toRegion,
+      country: chapter.toCountry,
+      countryCode: chapter.toCountryCode,
+      latitude: chapter.toLatitude,
+      longitude: chapter.toLongitude,
+      arrivalYear: chapter.moveYear,
+      reason: chapter.reason,
+    }))];
+
+    return {
+      authenticated: true,
+      trail: {
+        id: trail.id,
+        clientDraftId: trail.clientDraftId,
+        title: trail.title,
+        visibility: chapters[0]!.visibility,
+        stops,
+      },
+    };
   });

@@ -32,7 +32,7 @@ import {
   type Place,
   type TrailStop,
 } from '@/lib/atlas-data';
-import { getExploreRoutes, getRouteStats, saveTrail, searchPlaces } from '@/server/atlas';
+import { getExploreRoutes, getMyLatestTrail, getRouteStats, saveTrail, searchPlaces } from '@/server/atlas';
 
 const AtlasMap = lazy(() => import('@/components/AtlasMap'));
 const reasons = ['Career', 'Study', 'Family', 'Love', 'Adventure', 'Opportunity', 'Other'] as const;
@@ -60,6 +60,7 @@ function Index() {
   const [revealed, setRevealed] = useState(false);
   const [trail, setTrail] = useState<TrailStop[]>([]);
   const [draftId, setDraftId] = useState('');
+  const [draftReady, setDraftReady] = useState(false);
   const [activeChapter, setActiveChapter] = useState(0);
   const [revealRun, setRevealRun] = useState(0);
   const [formError, setFormError] = useState('');
@@ -67,7 +68,10 @@ function Index() {
   const [statsConfigured, setStatsConfigured] = useState(true);
   const [editor, setEditor] = useState<{ mode: 'before' | 'after' | 'move' | 'edit'; index?: number } | null>(null);
   const revealRef = useRef<HTMLElement>(null);
+  const loadedAccountRef = useRef<string | null>(null);
   const routeStats = useServerFn(getRouteStats);
+  const loadMyLatestTrail = useServerFn(getMyLatestTrail);
+  const { data: accountSession } = authClient.useSession();
 
   const userRoutes = useMemo(() => routesFromTrail(trail), [trail]);
   const selectedRoute = userRoutes[activeChapter] ?? userRoutes[0];
@@ -92,7 +96,32 @@ function Index() {
       }
     }
     setDraftId((value) => value || window.crypto.randomUUID());
+    setDraftReady(true);
   }, []);
+
+  useEffect(() => {
+    const userId = accountSession?.user?.id;
+    if (!draftReady || !draftId || !userId || loadedAccountRef.current === userId) return;
+    let current = true;
+    loadedAccountRef.current = userId;
+    void loadMyLatestTrail().then((response) => {
+      const saved = response.trail;
+      if (!current || !saved || (trail.length >= 2 && saved.clientDraftId !== draftId)) return;
+      const first = saved.stops[0];
+      const second = saved.stops[1];
+      if (!first || !second) return;
+      setDraftId(saved.clientDraftId);
+      setTrail(saved.stops);
+      setOrigin(first);
+      setDestination(second);
+      setActiveChapter(0);
+      setRevealed(true);
+      setRevealRun((value) => value + 1);
+    }).catch(() => {
+      if (current) loadedAccountRef.current = null;
+    });
+    return () => { current = false; };
+  }, [accountSession?.user?.id, draftId, draftReady]);
 
   useEffect(() => {
     if (!draftId || trail.length < 2) return;

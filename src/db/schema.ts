@@ -1,11 +1,11 @@
 import {
   bigint,
   boolean,
-  doublePrecision,
   index,
   integer,
   pgEnum,
   pgTable,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -70,25 +70,21 @@ export const countries = pgTable('countries', {
 });
 
 export const states = pgTable('states', {
-  id: bigint('id', { mode: 'number' }).primaryKey(),
+  id: integer('id').primaryKey(),
   countryCode: text('country_code').notNull().references(() => countries.code),
   admin1Code: text('admin1_code').notNull(),
   name: text('name').notNull(),
 }, (table) => [uniqueIndex('states_country_admin1_idx').on(table.countryCode, table.admin1Code)]);
 
 export const cities = pgTable('cities', {
-  id: bigint('id', { mode: 'number' }).primaryKey(),
+  id: integer('id').primaryKey(),
   name: text('name').notNull(),
   countryCode: text('country_code').notNull().references(() => countries.code),
-  stateId: bigint('state_id', { mode: 'number' }).references(() => states.id),
-  latitude: doublePrecision('latitude').notNull(),
-  longitude: doublePrecision('longitude').notNull(),
-  population: bigint('population', { mode: 'number' }).notNull().default(0),
-}, (table) => [
-  index('cities_country_idx').on(table.countryCode),
-  index('cities_state_idx').on(table.stateId),
-  index('cities_population_idx').on(table.population),
-]);
+  stateId: integer('state_id').references(() => states.id),
+  latitude: real('latitude').notNull(),
+  longitude: real('longitude').notNull(),
+  population: integer('population').notNull().default(0),
+});
 
 export const profiles = pgTable('profiles', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -113,8 +109,8 @@ export const lifeTrails = pgTable('life_trails', {
 export const movementChapters = pgTable('movement_chapters', {
   id: uuid('id').primaryKey().defaultRandom(),
   trailId: uuid('trail_id').notNull().references(() => lifeTrails.id, { onDelete: 'cascade' }),
-  fromCityId: bigint('from_city_id', { mode: 'number' }).notNull().references(() => cities.id),
-  toCityId: bigint('to_city_id', { mode: 'number' }).notNull().references(() => cities.id),
+  fromCityId: integer('from_city_id').notNull().references(() => cities.id),
+  toCityId: integer('to_city_id').notNull().references(() => cities.id),
   moveYear: integer('move_year').notNull(),
   reason: text('reason').notNull().default('Other'),
   visibility: visibilityEnum('visibility').notNull().default('PRIVATE'),
