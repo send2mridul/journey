@@ -29,6 +29,62 @@
       "when": 1789992666746,
       "tag": "0003_puzzling_vindicator",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789996106644,
+      "tag": "0004_fine_the_fallen",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789997001065,
+      "tag": "0005_regular_peter_quill",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790001613673,
+      "tag": "0006_bizarre_xavin",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790029382402,
+      "tag": "0007_lying_johnny_storm",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790040000000,
+      "tag": "0008_true_life_chapters",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790043600000,
+      "tag": "0009_chapter_compatibility_catchup",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790125200000,
+      "tag": "0010_guest_save_handoffs",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790128800000,
+      "tag": "0011_media_quotas",
+      "breakpoints": true
     }
   ]
 }
