@@ -10,12 +10,29 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CircleRouteImport } from './routes/circle'
+import { Route as SocialPreviewRouteImport } from './routes/social-preview'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
+import { Route as ApiUploadRouteImport } from './routes/api/upload'
+import { Route as AtlasShareTokenRouteImport } from './routes/atlas.$shareToken'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as PathsHandleRouteImport } from './routes/paths.$handle'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiMediaMediaIdRouteImport } from './routes/api/media.$mediaId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CircleRoute = CircleRouteImport.update({
+  id: '/circle',
+  path: '/circle',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SocialPreviewRoute = SocialPreviewRouteImport.update({
+  id: '/social-preview',
+  path: '/social-preview',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiHealthRoute = ApiHealthRouteImport.update({
@@ -23,40 +40,124 @@ const ApiHealthRoute = ApiHealthRouteImport.update({
   path: '/api/health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiUploadRoute = ApiUploadRouteImport.update({
+  id: '/api/upload',
+  path: '/api/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AtlasShareTokenRoute = AtlasShareTokenRouteImport.update({
+  id: '/atlas/$shareToken',
+  path: '/atlas/$shareToken',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PathsHandleRoute = PathsHandleRouteImport.update({
+  id: '/paths/$handle',
+  path: '/paths/$handle',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiMediaMediaIdRoute = ApiMediaMediaIdRouteImport.update({
+  id: '/api/media/$mediaId',
+  path: '/api/media/$mediaId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/circle': typeof CircleRoute
+  '/social-preview': typeof SocialPreviewRoute
   '/api/health': typeof ApiHealthRoute
+  '/api/upload': typeof ApiUploadRoute
+  '/atlas/$shareToken': typeof AtlasShareTokenRoute
+  '/invite/$token': typeof InviteTokenRoute
+  '/paths/$handle': typeof PathsHandleRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/media/$mediaId': typeof ApiMediaMediaIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/circle': typeof CircleRoute
+  '/social-preview': typeof SocialPreviewRoute
   '/api/health': typeof ApiHealthRoute
+  '/api/upload': typeof ApiUploadRoute
+  '/atlas/$shareToken': typeof AtlasShareTokenRoute
+  '/invite/$token': typeof InviteTokenRoute
+  '/paths/$handle': typeof PathsHandleRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/media/$mediaId': typeof ApiMediaMediaIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/circle': typeof CircleRoute
+  '/social-preview': typeof SocialPreviewRoute
   '/api/health': typeof ApiHealthRoute
+  '/api/upload': typeof ApiUploadRoute
+  '/atlas/$shareToken': typeof AtlasShareTokenRoute
+  '/invite/$token': typeof InviteTokenRoute
+  '/paths/$handle': typeof PathsHandleRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/media/$mediaId': typeof ApiMediaMediaIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/health' | '/api/auth/$'
+  fullPaths:
+    | '/'
+    | '/circle'
+    | '/social-preview'
+    | '/api/health'
+    | '/api/upload'
+    | '/atlas/$shareToken'
+    | '/invite/$token'
+    | '/paths/$handle'
+    | '/api/auth/$'
+    | '/api/media/$mediaId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/health' | '/api/auth/$'
-  id: '__root__' | '/' | '/api/health' | '/api/auth/$'
+  to:
+    | '/'
+    | '/circle'
+    | '/social-preview'
+    | '/api/health'
+    | '/api/upload'
+    | '/atlas/$shareToken'
+    | '/invite/$token'
+    | '/paths/$handle'
+    | '/api/auth/$'
+    | '/api/media/$mediaId'
+  id:
+    | '__root__'
+    | '/'
+    | '/circle'
+    | '/social-preview'
+    | '/api/health'
+    | '/api/upload'
+    | '/atlas/$shareToken'
+    | '/invite/$token'
+    | '/paths/$handle'
+    | '/api/auth/$'
+    | '/api/media/$mediaId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CircleRoute: typeof CircleRoute
+  SocialPreviewRoute: typeof SocialPreviewRoute
   ApiHealthRoute: typeof ApiHealthRoute
+  ApiUploadRoute: typeof ApiUploadRoute
+  AtlasShareTokenRoute: typeof AtlasShareTokenRoute
+  InviteTokenRoute: typeof InviteTokenRoute
+  PathsHandleRoute: typeof PathsHandleRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiMediaMediaIdRoute: typeof ApiMediaMediaIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -68,11 +169,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/circle': {
+      id: '/circle'
+      path: '/circle'
+      fullPath: '/circle'
+      preLoaderRoute: typeof CircleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/social-preview': {
+      id: '/social-preview'
+      path: '/social-preview'
+      fullPath: '/social-preview'
+      preLoaderRoute: typeof SocialPreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/health': {
       id: '/api/health'
       path: '/api/health'
       fullPath: '/api/health'
       preLoaderRoute: typeof ApiHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/upload': {
+      id: '/api/upload'
+      path: '/api/upload'
+      fullPath: '/api/upload'
+      preLoaderRoute: typeof ApiUploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/atlas/$shareToken': {
+      id: '/atlas/$shareToken'
+      path: '/atlas/$shareToken'
+      fullPath: '/atlas/$shareToken'
+      preLoaderRoute: typeof AtlasShareTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/paths/$handle': {
+      id: '/paths/$handle'
+      path: '/paths/$handle'
+      fullPath: '/paths/$handle'
+      preLoaderRoute: typeof PathsHandleRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -82,13 +225,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/media/$mediaId': {
+      id: '/api/media/$mediaId'
+      path: '/api/media/$mediaId'
+      fullPath: '/api/media/$mediaId'
+      preLoaderRoute: typeof ApiMediaMediaIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CircleRoute: CircleRoute,
+  SocialPreviewRoute: SocialPreviewRoute,
   ApiHealthRoute: ApiHealthRoute,
+  ApiUploadRoute: ApiUploadRoute,
+  AtlasShareTokenRoute: AtlasShareTokenRoute,
+  InviteTokenRoute: InviteTokenRoute,
+  PathsHandleRoute: PathsHandleRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiMediaMediaIdRoute: ApiMediaMediaIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

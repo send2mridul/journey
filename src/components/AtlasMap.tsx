@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { LocateFixed } from 'lucide-react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import type { AtlasRoute, TrailStop } from '@/lib/atlas-data';
+import { distanceKm, routeCoordinates, shortestLongitude, type AtlasRoute, type TrailStop } from '@/lib/atlas-data';
 
 type MapProps = {
   routes: AtlasRoute[];
@@ -12,6 +12,8 @@ type MapProps = {
   onCity?: (name: string) => void;
   cinematic?: boolean;
   activeRouteIndex?: number;
+  onInteraction?: () => void;
+  playback?: boolean;
 };
 
 type RouteFeature = {
@@ -20,54 +22,16 @@ type RouteFeature = {
   geometry: { type: 'LineString'; coordinates: number[][] };
 };
 
-function shortestLongitude(from: number, to: number) {
-  let target = to;
-  while (target - from > 180) target -= 360;
-  while (target - from < -180) target += 360;
-  return target;
-}
-
-function greatCircleArc(a: [number, number], b: [number, number]) {
-  const radians = (value: number) => value * Math.PI / 180;
-  const degrees = (value: number) => value * 180 / Math.PI;
-  const start = [radians(a[0]), radians(a[1])];
-  const end = [radians(shortestLongitude(a[0], b[0])), radians(b[1])];
-  const startVector = [Math.cos(start[1]!) * Math.cos(start[0]!), Math.cos(start[1]!) * Math.sin(start[0]!), Math.sin(start[1]!)];
-  const endVector = [Math.cos(end[1]!) * Math.cos(end[0]!), Math.cos(end[1]!) * Math.sin(end[0]!), Math.sin(end[1]!)];
-  const dot = Math.max(-1, Math.min(1, startVector[0]! * endVector[0]! + startVector[1]! * endVector[1]! + startVector[2]! * endVector[2]!));
-  const omega = Math.acos(dot);
-  const sinOmega = Math.sin(omega);
-
-  return Array.from({ length: 121 }, (_, index) => {
-    const t = index / 120;
-    if (sinOmega < 0.000001) return [a[0] + (shortestLongitude(a[0], b[0]) - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-    const fromWeight = Math.sin((1 - t) * omega) / sinOmega;
-    const toWeight = Math.sin(t * omega) / sinOmega;
-    const x = fromWeight * startVector[0]! + toWeight * endVector[0]!;
-    const y = fromWeight * startVector[1]! + toWeight * endVector[1]!;
-    const z = fromWeight * startVector[2]! + toWeight * endVector[2]!;
-    return [degrees(Math.atan2(y, x)), degrees(Math.atan2(z, Math.hypot(x, y)))];
-  });
-}
-
 function routeFeatures(routes: AtlasRoute[], year: number, selectedIndex: number): RouteFeature[] {
   return routes.flatMap((route, routeIndex) => route.year <= year ? [{
     type: 'Feature' as const,
     properties: { routeIndex, active: routeIndex === selectedIndex },
-    geometry: { type: 'LineString' as const, coordinates: greatCircleArc([route.from.longitude, route.from.latitude], [route.to.longitude, route.to.latitude]) },
+    geometry: { type: 'LineString' as const, coordinates: routeCoordinates(route) },
   }] : []);
 }
 
 function collection(features: unknown[]) {
   return { type: 'FeatureCollection' as const, features };
-}
-
-function distanceKm(a: TrailStop, b: TrailStop) {
-  const radians = (value: number) => value * Math.PI / 180;
-  const dLat = radians(b.latitude - a.latitude);
-  const dLng = radians(shortestLongitude(a.longitude, b.longitude) - a.longitude);
-  const value = Math.sin(dLat / 2) ** 2 + Math.cos(radians(a.latitude)) * Math.cos(radians(b.latitude)) * Math.sin(dLng / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }
 
 function maxZoomForDistance(km: number) {
@@ -79,7 +43,7 @@ function maxZoomForDistance(km: number) {
   return 2.7;
 }
 
-export default function AtlasMap({ routes, trail = [], layer = 'community', year = 2026, onCity, cinematic = false, activeRouteIndex }: MapProps) {
+export default function AtlasMap({ routes, trail = [], layer = 'community', year = 2026, onCity, cinematic = false, activeRouteIndex, onInteraction, playback = false }: MapProps) {
   const publicToken = import.meta.env['VITE_MAPBOX_PUBLIC_TOKEN'] ?? import.meta.env['VITE_LOVABLE_CONNECTOR_MAPBOX_PUBLIC_TOKEN'];
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -87,9 +51,11 @@ export default function AtlasMap({ routes, trail = [], layer = 'community', year
   const loadedRef = useRef(false);
   const lastFramedTrailRef = useRef('');
   const onCityRef = useRef(onCity);
+  const onInteractionRef = useRef(onInteraction);
   const propsRef = useRef({ routes, trail, layer, year, activeRouteIndex });
   const trailSignature = useMemo(() => trail.map((place) => `${place.id}:${place.latitude}:${place.longitude}`).join('|'), [trail]);
   onCityRef.current = onCity;
+  onInteractionRef.current = onInteraction;
   propsRef.current = { routes, trail, layer, year, activeRouteIndex };
 
   const renderJourney = (animateSegment: boolean) => {
@@ -157,11 +123,17 @@ export default function AtlasMap({ routes, trail = [], layer = 'community', year
     if (!map || !loadedRef.current || current.trail.length < 2 || (!force && signature === lastFramedTrailRef.current)) return;
 
     const bounds = new mapboxgl.LngLatBounds();
+    const framedRoutes = current.routes.length ? current.routes : current.trail.slice(1).map((to, index) => ({ from: current.trail[index]!, to, year: to.arrivalYear ?? 1900, reason: to.reason ?? 'Other', volume: 1 }));
+    let longitudeOffset = 0;
     let previousLongitude = current.trail[0]!.longitude;
-    current.trail.forEach((place, index) => {
-      const longitude = index === 0 ? place.longitude : shortestLongitude(previousLongitude, place.longitude);
-      bounds.extend([longitude, place.latitude]);
-      previousLongitude = longitude;
+    framedRoutes.forEach((route) => {
+      const coordinates = routeCoordinates(route).map(([longitude, latitude]) => {
+        const adjusted = shortestLongitude(previousLongitude, longitude + longitudeOffset);
+        previousLongitude = adjusted;
+        longitudeOffset = adjusted - longitude;
+        return [adjusted, latitude] as [number, number];
+      });
+      coordinates.forEach((coordinate) => bounds.extend(coordinate));
     });
     const longestSegment = current.trail.slice(1).reduce((longest, place, index) => Math.max(longest, distanceKm(current.trail[index]!, place)), 0);
     const mobile = window.innerWidth < 768;
@@ -174,6 +146,18 @@ export default function AtlasMap({ routes, trail = [], layer = 'community', year
     lastFramedTrailRef.current = signature;
     map.stop();
     map.easeTo({ center: camera.center, zoom: Math.min(camera.zoom, maxZoom), padding, duration: force ? 950 : 1500, pitch: longestSegment > 3500 ? 7 : 14, bearing: 0, essential: true });
+  };
+
+  const frameActiveRoute = () => {
+    const map = mapRef.current;
+    const current = propsRef.current;
+    const route = current.routes[current.activeRouteIndex ?? -1];
+    if (!map || !loadedRef.current || !route) return;
+    const bounds = new mapboxgl.LngLatBounds();
+    routeCoordinates(route).forEach((coordinate) => bounds.extend(coordinate));
+    const mobile = window.innerWidth < 768;
+    const camera = map.cameraForBounds(bounds, { padding: mobile ? { top: 100, bottom: 250, left: 40, right: 40 } : { top: 100, bottom: 100, left: 90, right: 390 }, maxZoom: maxZoomForDistance(distanceKm(route.from, route.to)) });
+    if (camera?.center && typeof camera.zoom === 'number') map.easeTo({ center: camera.center, zoom: camera.zoom, duration: 1450, pitch: 12, bearing: 0, essential: false });
   };
 
   useEffect(() => {
@@ -201,6 +185,9 @@ export default function AtlasMap({ routes, trail = [], layer = 'community', year
     map.dragPan.enable();
     map.dragRotate.enable();
     map.touchZoomRotate.enable();
+    map.on('dragstart', (event) => { if ('originalEvent' in event && event.originalEvent) onInteractionRef.current?.(); });
+    map.on('zoomstart', (event) => { if ('originalEvent' in event && event.originalEvent) onInteractionRef.current?.(); });
+    map.on('rotatestart', (event) => { if ('originalEvent' in event && event.originalEvent) onInteractionRef.current?.(); });
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'bottom-right');
     map.on('style.load', () => {
       map.setConfigProperty('basemap', 'lightPreset', 'dawn');
@@ -234,7 +221,9 @@ export default function AtlasMap({ routes, trail = [], layer = 'community', year
         const name = document.createElement('strong');
         const count = document.createElement('span');
         name.textContent = String(feature.properties?.['city'] ?? '');
-        count.textContent = `${Number(feature.properties?.['count'] ?? 0).toLocaleString()} community journeys`;
+        count.textContent = propsRef.current.layer === 'world'
+          ? `${Number(feature.properties?.['count'] ?? 0).toLocaleString()} people in migrant stock estimates`
+          : `${Number(feature.properties?.['count'] ?? 0).toLocaleString()} community journeys`;
         content.append(name, count);
         new mapboxgl.Popup({ closeButton: false, offset: 16, className: 'atlas-popup' }).setLngLat(feature.geometry.coordinates.slice(0, 2) as [number, number]).setDOMContent(content).addTo(map);
       });
@@ -260,6 +249,21 @@ export default function AtlasMap({ routes, trail = [], layer = 'community', year
   useEffect(() => {
     renderJourney(trail.length > 1);
   }, [routes, year, layer, activeRouteIndex]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    if (playback) {
+      map.dragPan.disable();
+      map.dragRotate.disable();
+      map.touchZoomRotate.disable();
+      frameActiveRoute();
+    } else {
+      map.dragPan.enable();
+      map.dragRotate.enable();
+      map.touchZoomRotate.enable();
+    }
+  }, [activeRouteIndex, playback]);
 
   useEffect(() => {
     frameJourney();
