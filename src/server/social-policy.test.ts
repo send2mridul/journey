@@ -142,4 +142,27 @@ describe('Our Paths derivation', () => {
     );
     expect(discoveries[0]).toMatchObject({ sameCityDifferentTimes: true, overlapFrom: null, overlapTo: null, approximateYears: 0 });
   });
+
+  test('returns an honest empty state when the two routes share no city', () => {
+    expect(deriveSharedDiscoveries(
+      [mridul[0]!],
+      [rohan[0]!],
+      2026,
+    )).toEqual([]);
+  });
+
+  test('uses a known end year when the other chapter is still open-ended', () => {
+    const discoveries = deriveSharedDiscoveries(
+      [{ ...mridul[1]!, fromYear: 2021, toYear: null }],
+      [{ ...rohan[1]!, fromYear: 2022, toYear: 2023 }],
+      2026,
+    );
+    expect(discoveries[0]).toMatchObject({
+      city: 'Bengaluru',
+      overlapFrom: 2022,
+      overlapTo: 2023,
+      approximateYears: 2,
+      sameCityDifferentTimes: false,
+    });
+  });
 });
