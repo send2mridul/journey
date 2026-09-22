@@ -8,11 +8,11 @@ export const Route = createFileRoute('/api/media/$mediaId')({
     handlers: {
       GET: async ({ params }) => {
         const parsed = z.string().uuid().safeParse(params.mediaId);
-        if (!parsed.success) return new Response('Not found', { status: 404 });
+        if (!parsed.success) return privateNotFound();
         const media = await canReadMedia(parsed.data);
-        if (!media) return new Response('Not found', { status: 404 });
+        if (!media) return privateNotFound();
         const blob = await readPrivateMedia(media.storageKey);
-        if (!blob) return new Response('Not found', { status: 404 });
+        if (!blob) return privateNotFound();
         const headers = new Headers(blob.headers);
         headers.set('Content-Type', media.mimeType);
         headers.set('Cache-Control', 'private, no-store');
@@ -22,3 +22,13 @@ export const Route = createFileRoute('/api/media/$mediaId')({
     },
   },
 });
+
+function privateNotFound() {
+  return new Response('Not found', {
+    status: 404,
+    headers: {
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
+}

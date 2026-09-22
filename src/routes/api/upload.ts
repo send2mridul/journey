@@ -12,7 +12,8 @@ export const Route = createFileRoute('/api/upload')({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        if (!process.env['BLOB_READ_WRITE_TOKEN']) return Response.json({ message: 'Photo uploads are not configured yet.' }, { status: 503 });
+        const responseHeaders = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' };
+        if (!process.env['BLOB_READ_WRITE_TOKEN']) return Response.json({ message: 'Photo uploads are not configured yet.' }, { status: 503, headers: responseHeaders });
         try {
           const body = await request.json() as HandleUploadBody;
           const result = await handleUpload({
@@ -83,9 +84,9 @@ export const Route = createFileRoute('/api/upload')({
               }
             },
           });
-          return Response.json(result);
+          return Response.json(result, { headers: responseHeaders });
         } catch (error) {
-          return Response.json({ message: error instanceof Error ? error.message : 'Upload could not be authorized.' }, { status: 400 });
+          return Response.json({ message: error instanceof Error ? error.message : 'Upload could not be authorized.' }, { status: 400, headers: responseHeaders });
         }
       },
     },
