@@ -14,6 +14,7 @@ type MapProps = {
   activeRouteIndex?: number;
   onInteraction?: () => void;
   playback?: boolean;
+  onChapter?: (index: number) => void;
 };
 
 type RouteFeature = {
@@ -43,19 +44,25 @@ function maxZoomForDistance(km: number) {
   return 2.7;
 }
 
-export default function AtlasMap({ routes, trail = [], layer = 'community', year = 2026, onCity, cinematic = false, activeRouteIndex, onInteraction, playback = false }: MapProps) {
+export default function AtlasMap({ routes, trail = [], layer = 'community', year = 2026, onCity, cinematic = false, activeRouteIndex, onInteraction, playback = false, onChapter }: MapProps) {
   const publicToken = import.meta.env['VITE_MAPBOX_PUBLIC_TOKEN'] ?? import.meta.env['VITE_LOVABLE_CONNECTOR_MAPBOX_PUBLIC_TOKEN'];
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const animationRef = useRef<number | null>(null);
+  const photoMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const photoPopupRef = useRef<mapboxgl.Popup | null>(null);
   const loadedRef = useRef(false);
   const lastFramedTrailRef = useRef('');
+  const lastPhotoSignatureRef = useRef('');
   const onCityRef = useRef(onCity);
   const onInteractionRef = useRef(onInteraction);
+  const onChapterRef = useRef(onChapter);
   const propsRef = useRef({ routes, trail, layer, year, activeRouteIndex });
   const trailSignature = useMemo(() => trail.map((place) => `${place.id}:${place.latitude}:${place.longitude}`).join('|'), [trail]);
+  const photoSignature = useMemo(() => JSON.stringify(trail.map((place) => ({ id: place.id, city: place.city, arrivalYear: place.arrivalYear, endYear: place.endYear, memory: place.memory, photo: place.photos?.[0]?.id, url: place.photos?.[0]?.url }))), [trail]);
   onCityRef.current = onCity;
   onInteractionRef.current = onInteraction;
+  onChapterRef.current = onChapter;
   propsRef.current = { routes, trail, layer, year, activeRouteIndex };
 
   const renderJourney = (animateSegment: boolean) => {
@@ -84,6 +91,70 @@ export default function AtlasMap({ routes, trail = [], layer = 'community', year
       geometry: { type: 'Point', coordinates: [place.longitude, place.latitude] },
     }))));
 
+    const nextPhotoSignature = JSON.stringify(current.trail.map((place) => ({ id: place.id, city: place.city, arrivalYear: place.arrivalYear, endYear: place.endYear, memory: place.memory, photo: place.photos?.[0]?.id, url: place.photos?.[0]?.url })));
+    if (nextPhotoSignature !== lastPhotoSignatureRef.current) {
+      photoMarkersRef.current.forEach((marker) => marker.remove());
+      photoMarkersRef.current = current.trail.flatMap((place, index) => {
+      const photo = place.photos?.[0];
+      if (!photo) return [];
+      const element = document.createElement('button');
+      element.type = 'button';
+      element.className = 'atlas-photo-pin';
+      element.setAttribute('aria-label', `Open ${place.city} chapter photograph`);
+      const image = document.createElement('img');
+      image.src = photo.url;
+      image.alt = '';
+      image.loading = 'lazy';
+      image.decoding = 'async';
+      element.append(image);
+
+      const popupContent = document.createElement('div');
+      popupContent.className = 'atlas-photo-preview';
+      const previewImage = document.createElement('img');
+      previewImage.src = photo.url;
+      previewImage.alt = photo.caption || `Memory from ${place.city}`;
+      const copy = document.createElement('div');
+      const city = document.createElement('strong');
+      city.textContent = place.city;
+      const years = document.createElement('span');
+      years.textContent = place.arrivalYear ? `${place.arrivalYear}${place.endYear ? `–${place.endYear}` : ''}` : place.country;
+      copy.append(city, years);
+      if (place.memory) {
+        const memory = document.createElement('p');
+        memory.textContent = place.memory.length > 130 ? `${place.memory.slice(0, 127)}…` : place.memory;
+        copy.append(memory);
+      }
+      if (onChapterRef.current) {
+        const open = document.createElement('button');
+        open.type = 'button';
+        open.textContent = 'Open full chapter';
+        open.addEventListener('click', () => {
+          photoPopupRef.current?.remove();
+          onChapterRef.current?.(index);
+        });
+        copy.append(open);
+      }
+      popupContent.append(previewImage, copy);
+
+      const showPreview = () => {
+        photoPopupRef.current?.remove();
+        photoPopupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, offset: 25, className: 'atlas-photo-popup' })
+          .setLngLat([place.longitude, place.latitude])
+          .setDOMContent(popupContent)
+          .addTo(map);
+      };
+      element.addEventListener('mouseenter', showPreview);
+      element.addEventListener('focus', showPreview);
+      element.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (window.matchMedia('(pointer: coarse)').matches || !onChapterRef.current) showPreview();
+        else onChapterRef.current(index);
+      });
+        return [new mapboxgl.Marker({ element, anchor: 'center' }).setLngLat([place.longitude, place.latitude]).addTo(map)];
+      });
+      lastPhotoSignatureRef.current = nextPhotoSignature;
+    }
+
     const selectedRoute = current.routes[selectedIndex];
     (map.getSource('active-markers') as mapboxgl.GeoJSONSource | undefined)?.setData(collection(selectedRoute ? [
       { type: 'Feature', properties: { role: 'origin' }, geometry: { type: 'Point', coordinates: [selectedRoute.from.longitude, selectedRoute.from.latitude] } },
@@ -98,6 +169,11 @@ export default function AtlasMap({ routes, trail = [], layer = 'community', year
     const coordinates = features.find((feature) => feature.properties.routeIndex === selectedIndex)?.geometry.coordinates ?? [];
     (map.getSource('route-particle') as mapboxgl.GeoJSONSource | undefined)?.setData(collection([]));
     if (!animateSegment || !coordinates.length) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const destination = coordinates.at(-1);
+      (map.getSource('route-particle') as mapboxgl.GeoJSONSource | undefined)?.setData(collection(destination ? [{ type: 'Feature', properties: { progress: 1 }, geometry: { type: 'Point', coordinates: destination } }] : []));
+      return;
+    }
 
     let startTime = 0;
     const drawDuration = 1500;
@@ -157,7 +233,7 @@ export default function AtlasMap({ routes, trail = [], layer = 'community', year
     routeCoordinates(route).forEach((coordinate) => bounds.extend(coordinate));
     const mobile = window.innerWidth < 768;
     const camera = map.cameraForBounds(bounds, { padding: mobile ? { top: 100, bottom: 250, left: 40, right: 40 } : { top: 100, bottom: 100, left: 90, right: 390 }, maxZoom: maxZoomForDistance(distanceKm(route.from, route.to)) });
-    if (camera?.center && typeof camera.zoom === 'number') map.easeTo({ center: camera.center, zoom: camera.zoom, duration: 1450, pitch: 12, bearing: 0, essential: false });
+    if (camera?.center && typeof camera.zoom === 'number') map.easeTo({ center: camera.center, zoom: camera.zoom, duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1450, pitch: 12, bearing: 0, essential: false });
   };
 
   useEffect(() => {
@@ -242,6 +318,10 @@ export default function AtlasMap({ routes, trail = [], layer = 'community', year
     });
     return () => {
       if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
+      photoPopupRef.current?.remove();
+      photoMarkersRef.current.forEach((marker) => marker.remove());
+      photoMarkersRef.current = [];
+      lastPhotoSignatureRef.current = '';
       loadedRef.current = false;
       map.remove();
     };
@@ -249,7 +329,7 @@ export default function AtlasMap({ routes, trail = [], layer = 'community', year
 
   useEffect(() => {
     renderJourney(trail.length > 1);
-  }, [routes, year, layer, activeRouteIndex]);
+  }, [routes, year, layer, activeRouteIndex, trailSignature, photoSignature]);
 
   useEffect(() => {
     const map = mapRef.current;

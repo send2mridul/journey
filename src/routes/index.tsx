@@ -37,6 +37,7 @@ import {
   type TrailStop,
   memoryPrompt,
 } from '@/lib/atlas-data';
+import { cityThenInsight } from '@/lib/city-insights';
 import { claimGuestSaveHandoff, createGuestSaveHandoff, deleteChapterPhoto, getExploreRoutes, getMediaCapabilities, getMyLatestTrail, getRouteStats, getWorldPatternMeta, getWorldPatterns, saveTrail, searchPlaces } from '@/server/atlas';
 import { getAuthCapabilities } from '@/server/auth-capabilities';
 import { AtlasSelect } from '@/components/AtlasSelect';
@@ -410,14 +411,14 @@ function Index() {
     <section ref={revealRef} className={`reveal-stage ${revealed ? 'is-revealed' : ''}`}>
       {!revealed ? <div className="mx-auto max-w-lg py-28 text-center"><Sparkles className="mx-auto text-primary" /><h2 className="mt-5 font-editorial text-4xl">Your Life Atlas begins with a place.</h2><p className="mt-3 text-muted-foreground">Choose where your story began, then add the first place life took you.</p></div> :
         <div className="relative min-h-[86svh] overflow-hidden">
-          <div className="absolute inset-0"><Suspense fallback={<MapLoading />}><AtlasMap routes={userRoutes} trail={trail} cinematic activeRouteIndex={activeChapter} playback={revealPlaying || replayState === 'playing'} /></Suspense><div className="reveal-wash absolute inset-0" /></div>
+          <div className="absolute inset-0"><Suspense fallback={<MapLoading />}><AtlasMap routes={userRoutes} trail={trail} cinematic activeRouteIndex={activeChapter} playback={revealPlaying || replayState === 'playing'} onChapter={(index) => { setActiveChapter(Math.max(0, index - 1)); document.getElementById(`chapter-${index}`)?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' }); }} /></Suspense><div className="reveal-wash absolute inset-0" /></div>
           <div className="pointer-events-none relative z-10 mx-auto flex min-h-[86svh] max-w-[1480px] flex-col justify-end px-5 py-8 md:items-end md:px-10 md:py-12">
             <div key={revealRun} className="reveal-sheet pointer-events-auto max-w-[370px]">
                 {revealPlaying && revealStep < 3 ? <div className="reveal-narration">
                 <p className="eyebrow">Your Life Atlas</p>
                 <h2 className="mt-3 font-editorial text-4xl">{revealStep === 0 ? 'Your story began here.' : revealStep === 1 ? `In ${selectedRoute?.year}, life took you to ${selectedRoute?.to.city}.` : 'Two places. One chapter of a much larger story.'}</h2>
                 <button className="text-button" onClick={() => { setRevealPlaying(false); setRevealStep(3); }}>Skip reveal</button>
-                </div> : replayState !== 'idle' ? <ReplayCard route={selectedRoute} chapter={trail[activeChapter + 1]} state={replayState} onPause={() => setReplayState(replayState === 'playing' ? 'paused' : 'playing')} onRestart={startReplay} onExit={() => setReplayState('idle')} /> : <>
+                </div> : replayState !== 'idle' ? <ReplayCard route={selectedRoute} chapter={trail[activeChapter + 1]} state={replayState} onPause={() => setReplayState(replayState === 'playing' ? 'paused' : 'playing')} onSkip={() => setActiveChapter((current) => { if (current >= userRoutes.length - 1) { setReplayState('idle'); return current; } return current + 1; })} onRestart={startReplay} onExit={() => setReplayState('idle')} /> : <>
                 <div className="fingerprint-lockup"><MovementFingerprint trail={trail} /><div><p className="eyebrow">Your Movement Fingerprint</p><h2 className="mt-3 font-editorial text-4xl">{trail.map((stop) => stop.city).join(' · ')}</h2></div></div>
                 <div className="insight-row">
                   <Insight value={`${fingerprint.locations}`} label="places called home" />
@@ -437,8 +438,9 @@ function Index() {
       <div className="grid gap-14 lg:grid-cols-[.72fr_1.28fr]">
         <div className="story-intro"><p className="eyebrow">Your Life Trail</p><h2 className="mt-4 font-editorial text-5xl leading-none md:text-6xl">A life is more than one line.</h2><p className="mt-5 max-w-md leading-7 text-muted-foreground">Each place becomes a chapter. Add them slowly — your story doesn’t need to be finished today.</p><MovementFingerprint trail={trail} className="story-fingerprint" /><div className="trail-total"><strong>{trail.length}</strong><span>places · {formatDistance(fingerprint.totalDistance)}</span></div></div>
         <div>
-          <div className="trail-flow">{trail.map((stop, index) => <div className={`trail-place ${Math.max(0, index - 1) === activeChapter ? 'is-active' : ''}`} key={`${stop.id}-${index}`}>
+          <div className="trail-flow">{trail.map((stop, index) => <div id={`chapter-${index}`} className={`trail-place ${Math.max(0, index - 1) === activeChapter ? 'is-active' : ''}`} key={`${stop.id}-${index}`}>
             <button className="trail-main" onClick={() => setActiveChapter(Math.max(0, index - 1))}><span>{String(index + 1).padStart(2, '0')}</span><div><small>{index === 0 ? 'The beginning' : index === trail.length - 1 ? 'Current chapter' : 'A chapter between'}</small><strong>{stop.city}</strong><p>{stop.region ? `${stop.region}, ` : ''}{stop.country}{stop.arrivalYear ? ` · ${stop.arrivalYear}${stop.endYear ? `–${stop.endYear}` : ''}` : ''}{stop.reason && stop.reason !== 'Other' ? ` · ${stop.reason}` : ''}</p>{stop.title && <b>{stop.title}</b>}{stop.memory && <blockquote>{stop.memory}</blockquote>}{stop.photos?.length ? <div className={`trail-photo-grid count-${Math.min(3, stop.photos.length)}`}>{stop.photos.slice(0, 3).map((photo) => <img key={photo.id} src={photo.url} alt={photo.caption || `Memory from ${stop.city}`} loading="lazy" />)}{stop.photos.length > 3 && <span>+{stop.photos.length - 3}</span>}</div> : <ChapterAtlasFallback city={stop.city} country={stop.country} latitude={stop.latitude} longitude={stop.longitude}/>}</div></button>
+            <CityThen stop={stop} />
             <div className="trail-actions"><button className="edit-action" aria-label={`Edit ${stop.city}`} onClick={() => editChapter(index)}><Pencil /><span>Edit</span></button>{index > 0 && <><button className="manage-action" aria-label={`Move ${stop.city} earlier`} disabled={index === 1} onClick={() => moveChapter(index, -1)}><ArrowUp /></button><button className="manage-action" aria-label={`Move ${stop.city} later`} disabled={index === trail.length - 1} onClick={() => moveChapter(index, 1)}><ArrowDown /></button><button className="manage-action" aria-label={`Delete ${stop.city}`} disabled={trail.length <= 2} onClick={() => deleteChapter(index)}><Trash2 /></button></>}</div>
             <div className="chapter-story-actions">
               <button className="memory-action" onClick={() => editChapter(index, 'memory')}>{stop.memory || stop.title ? 'Edit memory' : 'Add memory'}</button>
@@ -514,7 +516,7 @@ function ChapterEditor({ editor, trail, onClose, onSave }: { editor: { mode: 'be
   </div>;
 }
 
-function ReplayCard({ route, chapter, state, onPause, onRestart, onExit }: { route: AtlasRoute | undefined; chapter: TrailStop | undefined; state: 'playing' | 'paused'; onPause: () => void; onRestart: () => void; onExit: () => void }) {
+function ReplayCard({ route, chapter, state, onPause, onSkip, onRestart, onExit }: { route: AtlasRoute | undefined; chapter: TrailStop | undefined; state: 'playing' | 'paused'; onPause: () => void; onSkip: () => void; onRestart: () => void; onExit: () => void }) {
   return <div className="replay-card">
     <p className="eyebrow">Replay my life</p>
     <h2 className="mt-3 font-editorial text-4xl">{route?.to.city}</h2>
@@ -523,8 +525,21 @@ function ReplayCard({ route, chapter, state, onPause, onRestart, onExit }: { rou
     {chapter?.memory && <blockquote className="replay-memory">{chapter.memory}</blockquote>}
     {chapter?.photos?.length ? <div className="replay-photo-strip">{chapter.photos.slice(0, 2).map((photo) => <img className="replay-photo" key={photo.id} src={photo.url} alt={photo.caption || `Memory from ${chapter.city}`} />)}</div> : null}
     <small>{route ? `${route.from.city} → ${route.to.city}` : ''}</small>
-    <div className="replay-controls"><button className="outline-button" onClick={onPause}>{state === 'playing' ? <><Pause />Pause</> : <><Play />Continue</>}</button><button className="outline-button" onClick={onRestart}><RotateCcw />Restart</button><button className="text-button" onClick={onExit}>Exit</button></div>
+    <div className="replay-controls"><button className="outline-button" onClick={onPause}>{state === 'playing' ? <><Pause />Pause</> : <><Play />Continue</>}</button><button className="outline-button" onClick={onSkip}><ArrowRight />Next</button><button className="outline-button" onClick={onRestart}><RotateCcw />Restart</button><button className="text-button" onClick={onExit}>Exit</button></div>
   </div>;
+}
+
+function CityThen({ stop }: { stop: TrailStop }) {
+  const insight = cityThenInsight(stop);
+  if (!insight) return null;
+  return <details className="city-then">
+    <summary><span>Your city then</span><small>Verified context for {stop.arrivalYear}{stop.endYear ? `–${stop.endYear}` : ''}</small></summary>
+    <div>
+      <p><strong>{insight.population.toLocaleString()}</strong><span>{insight.populationLabel} · {insight.populationYear}</span></p>
+      <p><b>{insight.factYear}</b>{insight.fact}</p>
+      <small>Sources: <a href={insight.populationSource.url} target="_blank" rel="noreferrer">UN DESA</a> · <a href={insight.factSource.url} target="_blank" rel="noreferrer">city record</a>. Estimates use the UN city definition; unavailable cities are not inferred.</small>
+    </div>
+  </details>;
 }
 
 function MemoryEditor({ stop, index, total, section, onClose, onSave, onPhotosChanged }: { stop: TrailStop; index: number; total: number; section: ChapterEditorSection; onClose: () => void; onSave: (changes: Partial<TrailStop>) => void; onPhotosChanged: () => void }) {
