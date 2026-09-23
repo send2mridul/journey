@@ -50,7 +50,10 @@ async function rateLimit(profileId: string, action: string, maximum: number) {
 
 async function activity(recipientProfileId: string, actorProfileId: string | null, connectionId: string | null, type: string, payload: SocialPayload = {}) {
   const { sql } = await import('@/db');
-  await sql`INSERT INTO social_activities (recipient_profile_id, actor_profile_id, connection_id, type, payload) VALUES (${recipientProfileId}::uuid, ${actorProfileId}::uuid, ${connectionId}::uuid, ${type}, ${sql.json(payload)})`;
+  // Pass JSON as text and cast it explicitly. The bundled Vercel runtime can
+  // otherwise hand postgres-js' JSON helper a transformed object, which makes
+  // activity logging fail after the primary social mutation has committed.
+  await sql`INSERT INTO social_activities (recipient_profile_id, actor_profile_id, connection_id, type, payload) VALUES (${recipientProfileId}::uuid, ${actorProfileId}::uuid, ${connectionId}::uuid, ${type}, ${JSON.stringify(payload)}::jsonb)`;
 }
 
 export const getSocialSession = createServerFn({ method: 'GET' }).handler(async () => {
