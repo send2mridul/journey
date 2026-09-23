@@ -49,12 +49,7 @@ export async function canReadMedia(mediaId: string) {
   if (!databaseConfigured) return null;
   const userId = session?.user?.id ?? null;
   const [row] = await sql<{ storageKey: string; mimeType: string; shared: boolean }[]>`
-    SELECT media.storage_key AS "storageKey", media.mime_type AS "mimeType",
-      (
-        trail.visibility IN ('UNLISTED', 'PUBLIC')
-        AND COALESCE(chapter.privacy_override, trail.visibility) <> 'PRIVATE'
-        AND COALESCE(media.privacy_override, chapter.privacy_override, trail.visibility) <> 'PRIVATE'
-      ) AS shared
+    SELECT media.storage_key AS "storageKey", media.mime_type AS "mimeType", false AS shared
     FROM chapter_media media
     JOIN life_chapters chapter ON chapter.id = media.life_chapter_id
     JOIN life_trails trail ON trail.id = chapter.trail_id
@@ -63,11 +58,6 @@ export async function canReadMedia(mediaId: string) {
       AND (
         (${userId}::text IS NOT NULL AND profile.user_id = ${userId})
         OR (${anonymousOwnerHash}::text IS NOT NULL AND trail.anonymous_owner_hash = ${anonymousOwnerHash})
-        OR (
-          trail.visibility IN ('UNLISTED', 'PUBLIC')
-          AND COALESCE(chapter.privacy_override, trail.visibility) <> 'PRIVATE'
-          AND COALESCE(media.privacy_override, chapter.privacy_override, trail.visibility) <> 'PRIVATE'
-        )
       )
     LIMIT 1
   `;

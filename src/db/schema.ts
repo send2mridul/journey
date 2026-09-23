@@ -17,7 +17,7 @@ import {
 import { sql } from 'drizzle-orm';
 
 export const visibilityEnum = pgEnum('chapter_visibility', ['PUBLIC', 'ANONYMOUS', 'PRIVATE']);
-export const storyVisibilityEnum = pgEnum('story_visibility', ['PRIVATE', 'UNLISTED', 'PUBLIC']);
+export const storyVisibilityEnum = pgEnum('story_visibility', ['PRIVATE', 'FRIENDS', 'UNLISTED', 'PUBLIC']);
 export const profileDiscoverabilityEnum = pgEnum('profile_discoverability', ['DISCOVERABLE', 'LIMITED', 'HIDDEN']);
 export const friendListVisibilityEnum = pgEnum('friend_list_visibility', ['ONLY_ME', 'FRIENDS']);
 export const connectionStatusEnum = pgEnum('connection_status', ['PENDING', 'ACCEPTED', 'DECLINED', 'BLOCKED']);

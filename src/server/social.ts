@@ -379,24 +379,46 @@ async function fullTrail(profileId: string) {
   const { sql } = await import('@/db');
   const chapters = await sql<Array<{
     chapterId: string; position: number; arrivalYear: number | null; endYear: number | null; reason: string;
-    cityId: number; city: string; country: string; countryCode: string; latitude: number; longitude: number;
+      cityId: number; city: string; region: string | null; country: string; countryCode: string; latitude: number; longitude: number;
   }>>`
     SELECT chapter.id::text AS "chapterId", chapter.position, chapter.arrival_year AS "arrivalYear", chapter.end_year AS "endYear", chapter.reason,
-      city.id AS "cityId", city.name AS city, country.name AS country, country.code AS "countryCode", city.latitude, city.longitude
+      city.id AS "cityId", city.name AS city, state.name AS region, country.name AS country, country.code AS "countryCode", city.latitude, city.longitude
     FROM life_trails trail
     JOIN life_chapters chapter ON chapter.trail_id = trail.id
-    JOIN cities city ON city.id = chapter.city_id JOIN countries country ON country.code = city.country_code
+    JOIN cities city ON city.id = chapter.city_id JOIN countries country ON country.code = city.country_code LEFT JOIN states state ON state.id = city.state_id
     WHERE trail.profile_id = ${profileId}::uuid
       AND trail.id = (SELECT id FROM life_trails WHERE profile_id = ${profileId}::uuid ORDER BY updated_at DESC LIMIT 1)
     ORDER BY chapter.position
   `;
   if (!chapters.length) return [];
   return chapters.map((chapter) => ({
-      id: String(chapter.cityId), chapterId: chapter.chapterId, city: chapter.city, country: chapter.country, countryCode: chapter.countryCode,
-      latitude: chapter.latitude, longitude: chapter.longitude, arrivalYear: chapter.arrivalYear ?? undefined, endYear: chapter.endYear,
-      reason: chapter.reason,
+      id: String(chapter.cityId), chapterId: chapter.chapterId, city: chapter.city, region: chapter.region, country: chapter.country, countryCode: chapter.countryCode,
+      latitude: chapter.latitude, longitude: chapter.longitude, arrivalYear: chapter.arrivalYear ?? undefined, endYear: chapter.endYear ?? undefined,
+      reason: chapter.reason as 'Career' | 'Study' | 'Family' | 'Love' | 'Adventure' | 'Opportunity' | 'A new start' | 'Other',
     }));
 }
+
+export const getFriendAtlas = createServerFn({ method: 'GET' })
+  .validator((value: unknown) => z.object({ handle: handleInput }).parse(value))
+  .handler(async ({ data }) => {
+    const me = await requireSocialProfile();
+    const connection = await connectionWithHandle(me.id, data.handle);
+    if (!connection || connection.status !== 'ACCEPTED') throw new Error('This Atlas is available only to mutually accepted friends.');
+    const { sql } = await import('@/db');
+    const [trail] = await sql<Array<{ visibility: 'PRIVATE' | 'FRIENDS' | 'UNLISTED' | 'PUBLIC' }>>`
+      SELECT visibility FROM life_trails
+      WHERE profile_id = ${connection.otherProfileId}::uuid
+      ORDER BY updated_at DESC, created_at DESC
+      LIMIT 1
+    `;
+    if (!trail) throw new Error(`@${connection.otherHandle} has not saved a Life Atlas yet.`);
+    if (trail.visibility === 'PRIVATE') throw new Error(`@${connection.otherHandle} is keeping their Atlas private.`);
+    const stops = await fullTrail(connection.otherProfileId);
+    return {
+      profile: minimalProfile({ displayName: connection.otherDisplayName, handle: connection.otherHandle, image: connection.otherImage }),
+      stops,
+    };
+  });
 
 export const getOurPaths = createServerFn({ method: 'GET' })
   .validator((value: unknown) => z.object({ handle: handleInput }).parse(value))
@@ -470,7 +492,7 @@ export const getOurPathsShareData = createServerFn({ method: 'POST' })
     };
   });
 
-const addChapterPersonInput = z.object({ chapterId: z.string().uuid(), handle: handleInput.optional(), placeholderName: z.string().trim().min(1).max(80).optional() }).refine((value) => Boolean(value.handle) !== Boolean(value.placeholderName), 'Choose a Life Atlas person or add a private placeholder.');
+const addChapterPersonInput = z.object({ chapterId: z.string().uuid(), handle: handleInput });
 
 export const addChapterPerson = createServerFn({ method: 'POST' })
   .validator((value: unknown) => addChapterPersonInput.parse(value))
@@ -483,22 +505,13 @@ export const addChapterPerson = createServerFn({ method: 'POST' })
       WHERE chapter.id = ${data.chapterId}::uuid AND trail.profile_id = ${me.id}::uuid
     `;
     if (!chapter) throw new Error('That chapter is not available.');
-    if (data.placeholderName) {
-      const [person] = await sql<{ id: string; name: string; status: string }[]>`
-        INSERT INTO chapter_people (life_chapter_id, owner_profile_id, placeholder_name, status)
-        VALUES (${chapter.id}::uuid, ${me.id}::uuid, ${data.placeholderName}, 'PLACEHOLDER')
-        RETURNING id::text AS id, placeholder_name AS name, status
-      `;
-      if (!person) throw new Error('The private placeholder could not be added.');
-      return { person };
-    }
-    const normalized = normalizeHandle(data.handle!).normalized;
+    const normalized = normalizeHandle(data.handle).normalized;
     const [target] = await sql<{ id: string; displayName: string | null; handle: string; discoverability: string; connected: boolean }[]>`
       SELECT target.id::text AS id, target.display_name AS "displayName", target.handle, target.discoverability,
         EXISTS(SELECT 1 FROM connections WHERE status = 'ACCEPTED' AND low_profile_id = LEAST(target.id, ${me.id}::uuid) AND high_profile_id = GREATEST(target.id, ${me.id}::uuid)) AS connected
       FROM profiles target WHERE target.handle_normalized = ${normalized}
     `;
-    if (!target || target.id === me.id || (target.discoverability === 'HIDDEN' && !target.connected)) throw new Error('That Life Atlas profile is not available.');
+    if (!target || target.id === me.id || !target.connected) throw new Error('Only an accepted friend can be added to a chapter.');
     const [person] = await sql<{ id: string; status: string }[]>`
       INSERT INTO chapter_people (life_chapter_id, owner_profile_id, target_profile_id, status)
       VALUES (${chapter.id}::uuid, ${me.id}::uuid, ${target.id}::uuid, 'PENDING')
@@ -520,9 +533,32 @@ export const getChapterPeople = createServerFn({ method: 'GET' })
       FROM chapter_people person
       JOIN life_chapters chapter ON chapter.id = person.life_chapter_id JOIN life_trails trail ON trail.id = chapter.trail_id
       LEFT JOIN profiles target ON target.id = person.target_profile_id
-      WHERE person.life_chapter_id = ${data.chapterId}::uuid AND trail.profile_id = ${me.id}::uuid ORDER BY person.created_at
+      WHERE person.life_chapter_id = ${data.chapterId}::uuid AND trail.profile_id = ${me.id}::uuid AND person.target_profile_id IS NOT NULL ORDER BY person.created_at
     `;
     return { people };
+  });
+
+export const getChapterFriendOptions = createServerFn({ method: 'GET' })
+  .validator((value: unknown) => z.object({ chapterId: z.string().uuid() }).parse(value))
+  .handler(async ({ data }) => {
+    const me = await requireSocialProfile();
+    const { sql } = await import('@/db');
+    const [chapter] = await sql<{ id: string }[]>`
+      SELECT chapter.id::text AS id FROM life_chapters chapter
+      JOIN life_trails trail ON trail.id = chapter.trail_id
+      WHERE chapter.id = ${data.chapterId}::uuid AND trail.profile_id = ${me.id}::uuid
+    `;
+    if (!chapter) throw new Error('That chapter is not available.');
+    const friends = await sql<Array<{ displayName: string | null; handle: string }>>`
+      SELECT friend.display_name AS "displayName", friend.handle
+      FROM connections connection
+      JOIN profiles friend ON friend.id = CASE WHEN connection.low_profile_id = ${me.id}::uuid THEN connection.high_profile_id ELSE connection.low_profile_id END
+      WHERE ${me.id}::uuid IN (connection.low_profile_id, connection.high_profile_id)
+        AND connection.status = 'ACCEPTED'
+        AND friend.handle IS NOT NULL
+      ORDER BY friend.handle_normalized
+    `;
+    return { friends: friends.map((friend) => ({ displayName: friend.displayName || friend.handle, handle: friend.handle })) };
   });
 
 export const respondChapterTag = createServerFn({ method: 'POST' })

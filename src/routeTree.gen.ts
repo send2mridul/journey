@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CircleRouteImport } from './routes/circle'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as SocialPreviewRouteImport } from './routes/social-preview'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiUploadRouteImport } from './routes/api/upload'
@@ -19,6 +20,7 @@ import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as PathsHandleRouteImport } from './routes/paths.$handle'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiMediaMediaIdRouteImport } from './routes/api/media.$mediaId'
+import { Route as AtlasFriendHandleRouteImport } from './routes/atlas.friend.$handle'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
 const CircleRoute = CircleRouteImport.update({
   id: '/circle',
   path: '/circle',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SocialPreviewRoute = SocialPreviewRouteImport.update({
@@ -70,10 +77,16 @@ const ApiMediaMediaIdRoute = ApiMediaMediaIdRouteImport.update({
   path: '/api/media/$mediaId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AtlasFriendHandleRoute = AtlasFriendHandleRouteImport.update({
+  id: '/atlas/friend/$handle',
+  path: '/atlas/friend/$handle',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/circle': typeof CircleRoute
+  '/profile': typeof ProfileRoute
   '/social-preview': typeof SocialPreviewRoute
   '/api/health': typeof ApiHealthRoute
   '/api/upload': typeof ApiUploadRoute
@@ -82,10 +95,12 @@ export interface FileRoutesByFullPath {
   '/paths/$handle': typeof PathsHandleRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/media/$mediaId': typeof ApiMediaMediaIdRoute
+  '/atlas/friend/$handle': typeof AtlasFriendHandleRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/circle': typeof CircleRoute
+  '/profile': typeof ProfileRoute
   '/social-preview': typeof SocialPreviewRoute
   '/api/health': typeof ApiHealthRoute
   '/api/upload': typeof ApiUploadRoute
@@ -94,11 +109,13 @@ export interface FileRoutesByTo {
   '/paths/$handle': typeof PathsHandleRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/media/$mediaId': typeof ApiMediaMediaIdRoute
+  '/atlas/friend/$handle': typeof AtlasFriendHandleRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/circle': typeof CircleRoute
+  '/profile': typeof ProfileRoute
   '/social-preview': typeof SocialPreviewRoute
   '/api/health': typeof ApiHealthRoute
   '/api/upload': typeof ApiUploadRoute
@@ -107,12 +124,14 @@ export interface FileRoutesById {
   '/paths/$handle': typeof PathsHandleRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/media/$mediaId': typeof ApiMediaMediaIdRoute
+  '/atlas/friend/$handle': typeof AtlasFriendHandleRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/circle'
+    | '/profile'
     | '/social-preview'
     | '/api/health'
     | '/api/upload'
@@ -121,10 +140,12 @@ export interface FileRouteTypes {
     | '/paths/$handle'
     | '/api/auth/$'
     | '/api/media/$mediaId'
+    | '/atlas/friend/$handle'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/circle'
+    | '/profile'
     | '/social-preview'
     | '/api/health'
     | '/api/upload'
@@ -133,10 +154,12 @@ export interface FileRouteTypes {
     | '/paths/$handle'
     | '/api/auth/$'
     | '/api/media/$mediaId'
+    | '/atlas/friend/$handle'
   id:
     | '__root__'
     | '/'
     | '/circle'
+    | '/profile'
     | '/social-preview'
     | '/api/health'
     | '/api/upload'
@@ -145,11 +168,13 @@ export interface FileRouteTypes {
     | '/paths/$handle'
     | '/api/auth/$'
     | '/api/media/$mediaId'
+    | '/atlas/friend/$handle'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CircleRoute: typeof CircleRoute
+  ProfileRoute: typeof ProfileRoute
   SocialPreviewRoute: typeof SocialPreviewRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiUploadRoute: typeof ApiUploadRoute
@@ -158,6 +183,7 @@ export interface RootRouteChildren {
   PathsHandleRoute: typeof PathsHandleRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiMediaMediaIdRoute: typeof ApiMediaMediaIdRoute
+  AtlasFriendHandleRoute: typeof AtlasFriendHandleRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -174,6 +200,13 @@ declare module '@tanstack/react-router' {
       path: '/circle'
       fullPath: '/circle'
       preLoaderRoute: typeof CircleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/social-preview': {
@@ -232,12 +265,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMediaMediaIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/atlas/friend/$handle': {
+      id: '/atlas/friend/$handle'
+      path: '/atlas/friend/$handle'
+      fullPath: '/atlas/friend/$handle'
+      preLoaderRoute: typeof AtlasFriendHandleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CircleRoute: CircleRoute,
+  ProfileRoute: ProfileRoute,
   SocialPreviewRoute: SocialPreviewRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiUploadRoute: ApiUploadRoute,
@@ -246,6 +287,7 @@ const rootRouteChildren: RootRouteChildren = {
   PathsHandleRoute: PathsHandleRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiMediaMediaIdRoute: ApiMediaMediaIdRoute,
+  AtlasFriendHandleRoute: AtlasFriendHandleRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

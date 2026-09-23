@@ -1,13 +1,12 @@
 import { createServerFn } from '@tanstack/react-start';
 import { getRequestHeaders } from '@tanstack/react-start/server';
-import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import type { AtlasRoute, Place, StoryVisibility, TrailStop } from '@/lib/atlas-data';
 
 const privacyThreshold = 5;
 const placeId = z.string().regex(/^\d+$/);
 const reason = z.enum(['Career', 'Study', 'Family', 'Love', 'Adventure', 'Opportunity', 'A new start', 'Other']);
-const storyVisibility = z.enum(['PRIVATE', 'UNLISTED', 'PUBLIC']);
+const storyVisibility = z.enum(['PRIVATE', 'FRIENDS', 'UNLISTED', 'PUBLIC']);
 
 const searchInput = z.object({ query: z.string().trim().min(2).max(80) });
 
@@ -222,7 +221,7 @@ async function persistTrail(data: SaveTrailData, session: SaveSession) {
     const { clearAnonymousOwnerCookie, getAnonymousOwnerHash } = await import('@/server/anonymous-owner');
     const anonymousOwnerHash = getAnonymousOwnerHash();
     if (!session?.user && !anonymousOwnerHash) throw new Error('Sign in with Google to save this Life Atlas. Your preview has not been stored.');
-    if (data.visibility === 'PUBLIC' && !session?.user) throw new Error('Public Life Atlases require a permanent account. You can share this Atlas as Unlisted for now.');
+    data = { ...data, visibility: session?.user && data.visibility !== 'PRIVATE' ? 'FRIENDS' : 'PRIVATE' };
 
     const saved = await sql.begin(async (transaction) => {
       const uniqueCityIds = [...new Set(data.stops.map((stop) => stop.id))];
@@ -369,16 +368,8 @@ async function persistTrail(data: SaveTrailData, session: SaveSession) {
         await transaction`DELETE FROM movement_chapters WHERE trail_id = ${trail.id}::uuid AND NOT (id = ANY(${keptMovementIds}::uuid[]))`;
         await transaction`DELETE FROM life_chapters WHERE trail_id = ${trail.id}::uuid AND NOT (id = ANY(${chapterIds}::uuid[]))`;
       }
-      let shareToken: string | null = null;
-      if (data.visibility !== 'PRIVATE') {
-        const [sharedTrail] = await transaction<{ shareToken: string }[]>`
-          UPDATE life_trails
-          SET share_token = COALESCE(share_token, ${randomBytes(24).toString('base64url')}), published_at = COALESCE(published_at, now()), updated_at = now()
-          WHERE id = ${trail.id}::uuid
-          RETURNING share_token AS "shareToken"
-        `;
-        shareToken = sharedTrail?.shareToken ?? null;
-      }
+      await transaction`UPDATE life_trails SET share_token = NULL, published_at = NULL, updated_at = now() WHERE id = ${trail.id}::uuid`;
+      const shareToken: string | null = null;
       return { trailId: trail.id, chapterIds, shareToken };
     });
 
@@ -645,47 +636,6 @@ export const deleteChapterPhoto = createServerFn({ method: 'POST' })
 export const getSharedTrail = createServerFn({ method: 'POST' })
   .validator((value: unknown) => z.object({ token: z.string().min(24).max(100) }).parse(value))
   .handler(async ({ data }) => {
-    const { databaseConfigured, sql } = await import('@/db');
-    if (!databaseConfigured) return { trail: null };
-    const [trail] = await sql<Array<{ id: string; title: string; publicTitle: string | null; visibility: StoryVisibility; displayName: string | null }>>`
-      SELECT trail.id::text AS id, trail.title, trail.public_title AS "publicTitle", trail.visibility, profile.display_name AS "displayName"
-      FROM life_trails trail
-      LEFT JOIN profiles profile ON profile.id = trail.profile_id
-      WHERE trail.share_token = ${data.token} AND trail.visibility IN ('UNLISTED', 'PUBLIC')
-      LIMIT 1
-    `;
-    if (!trail) return { trail: null };
-    const chapters = await sql<Array<{
-      id: string; position: number; arrivalYear: number | null; endYear: number | null; reason: string; title: string | null; memory: string | null;
-      cityId: string; city: string; region: string | null; country: string; countryCode: string; latitude: number; longitude: number;
-    }>>`
-      SELECT chapter.id::text AS id, chapter.position, chapter.arrival_year AS "arrivalYear", chapter.end_year AS "endYear", chapter.reason, chapter.title, chapter.memory_body AS memory,
-        city.id::text AS "cityId", city.name AS city, state.name AS region, country.name AS country, country.code AS "countryCode", city.latitude, city.longitude
-      FROM life_chapters chapter
-      JOIN cities city ON city.id = chapter.city_id
-      JOIN countries country ON country.code = city.country_code
-      LEFT JOIN states state ON state.id = city.state_id
-      WHERE chapter.trail_id = ${trail.id}::uuid
-        AND COALESCE(chapter.privacy_override, ${trail.visibility}::story_visibility) <> 'PRIVATE'
-      ORDER BY chapter.position
-    `;
-    if (!chapters.length) return { trail: null };
-    const chapterIds = chapters.map((chapter) => chapter.id);
-    const media = await sql<Array<{ id: string; chapterId: string; mimeType: string; width: number | null; height: number | null; displayOrder: number; caption: string | null }>>`
-      SELECT media.id::text AS id, media.life_chapter_id::text AS "chapterId", media.mime_type AS "mimeType", media.width, media.height, media.display_order AS "displayOrder", media.caption
-      FROM chapter_media media
-      JOIN life_chapters chapter ON chapter.id = media.life_chapter_id
-      WHERE media.life_chapter_id = ANY(${chapterIds}::uuid[])
-        AND COALESCE(media.privacy_override, chapter.privacy_override, ${trail.visibility}::story_visibility) <> 'PRIVATE'
-      ORDER BY media.life_chapter_id, media.display_order
-    `;
-    const mediaByChapter = new Map<string, Array<{ id: string; chapterId: string; mimeType: string; width: number | null; height: number | null; displayOrder: number; caption: string | null }>>();
-    media.forEach((item) => mediaByChapter.set(item.chapterId, [...(mediaByChapter.get(item.chapterId) ?? []), item]));
-    const stops: TrailStop[] = chapters.map((chapter) => ({
-      id: chapter.cityId, chapterId: chapter.id, city: chapter.city, region: chapter.region, country: chapter.country, countryCode: chapter.countryCode, latitude: chapter.latitude, longitude: chapter.longitude,
-      ...(chapter.arrivalYear ? { arrivalYear: chapter.arrivalYear } : {}), ...(chapter.endYear ? { endYear: chapter.endYear } : {}), reason: chapter.reason,
-      ...(chapter.title ? { title: chapter.title } : {}), ...(chapter.memory ? { memory: chapter.memory } : {}),
-      photos: (mediaByChapter.get(chapter.id) ?? []).map((photo) => ({ ...photo, url: `/api/media/${photo.id}` })),
-    }));
-    return { trail: { title: trail.publicTitle || trail.title, displayName: trail.displayName, visibility: trail.visibility, stops } };
+    void data;
+    return { trail: null };
   });

@@ -1,57 +1,17 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useServerFn } from '@tanstack/react-start';
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, LockKeyhole, Shield, Sparkles } from 'lucide-react';
+import { ArrowLeft, LockKeyhole, Sparkles } from 'lucide-react';
 import { authClient } from '@/lib/auth-client';
 import { getAuthCapabilities } from '@/server/auth-capabilities';
-import { changeConnection, getLifeCircle, getSocialSession, respondChapterTag, respondConnection, respondSharedMoment, saveSocialProfile, searchPeople, sendConnectionRequest } from '@/server/social';
+import { changeConnection, getLifeCircle, getSocialSession, respondChapterTag, respondConnection, respondSharedMoment, searchPeople, sendConnectionRequest } from '@/server/social';
 import { LifeCircleView, type CircleData, type CirclePerson } from '@/components/social/LifeCircleView';
+import { SocialProfileForm } from '@/components/social/SocialProfileForm';
 
 export const Route = createFileRoute('/circle')({ component: LifeCircleRoute });
 
 function SocialGate({ googleAvailable, onGoogle }: { googleAvailable: boolean | null; onGoogle: () => void }) {
   return <main className="social-gate"><Link to="/" className="circle-brand">Life Atlas</Link><div className="social-gate-visual"><i/><i/><Sparkles/><span/></div><p className="eyebrow">My Life Circle</p><h1>Your Atlas can remain private and still become part of someone’s story.</h1><p>Google establishes one permanent person. Your Life Atlas handle is what friends use to find you—your email is never public.</p><button className="primary-button" disabled={googleAvailable !== true} onClick={onGoogle}><span className="google-g">G</span>{googleAvailable === false ? 'Google sign-in needs credentials' : 'Continue with Google'}</button><small><LockKeyhole/>No passwords, phone numbers, or contact access.</small><Link to="/"><ArrowLeft/>Return to my Atlas</Link></main>;
-}
-
-function HandleSetup({ onSaved }: { onSaved: () => void }) {
-  const save = useServerFn(saveSocialProfile);
-  const [handle, setHandle] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [discoverability, setDiscoverability] = useState<'DISCOVERABLE'|'LIMITED'|'HIDDEN'>('LIMITED');
-  const [message, setMessage] = useState('');
-  async function submit() {
-    try {
-      await save({ data: { handle, displayName, discoverability, friendListVisibility: 'ONLY_ME' } });
-      onSaved();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Your profile could not be saved.');
-    }
-  }
-  const choices = [
-    ['DISCOVERABLE', 'Discoverable', 'Handle search and thoughtful suggestions.'],
-    ['LIMITED', 'Limited', 'Exact handle or invitation only.'],
-    ['HIDDEN', 'Hidden', 'Existing relationships and valid invites only.'],
-  ] as const;
-  return <main className="handle-setup">
-    <Link to="/" className="circle-brand">Life Atlas</Link>
-    <div className="handle-setup-card">
-      <p className="eyebrow">One last detail</p>
-      <h1>Choose how friends find you.</h1>
-      <p>Your handle is public identity, never a login credential. Your Google email remains private.</p>
-      <label>Display name<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Mridul" maxLength={80}/></label>
-      <label>Life Atlas handle<div className="handle-input"><span>@</span><input value={handle} onChange={(event) => setHandle(event.target.value)} placeholder="mridul" maxLength={24}/></div></label>
-      <fieldset>
-        <legend>Who can find me?</legend>
-        {choices.map(([value, title, copy]) => <button key={value} type="button" className={discoverability === value ? 'active' : ''} onClick={() => setDiscoverability(value)}>
-          <i />
-          <span><strong>{title}</strong><small>{copy}</small></span>
-          {discoverability === value && <Shield />}
-        </button>)}
-      </fieldset>
-      <button className="primary-button" disabled={!handle.trim() || !displayName.trim()} onClick={() => void submit()}>Enter my Life Circle</button>
-      {message && <p className="save-message">{message}</p>}
-    </div>
-  </main>;
 }
 
 function LifeCircleRoute() {
@@ -87,7 +47,7 @@ function LifeCircleRoute() {
 
   if (!sessionState) return <div className="social-loading">Drawing your Life Circle…</div>;
   if (!sessionState.authenticated) return <SocialGate googleAvailable={googleAvailable} onGoogle={()=>void google()}/>;
-  if (!sessionState.profile) return <HandleSetup onSaved={()=>void load()}/>;
+  if (!sessionState.profile) return <main className="handle-setup"><Link to="/" className="circle-brand">Life Atlas</Link><SocialProfileForm onSaved={()=>void load()}/></main>;
   if (!circle) return <div className="social-loading">Finding the people in your story…</div>;
   return <><LifeCircleView data={circle} searchQuery={query} searchResults={results} searching={searching} onSearchQuery={setQuery} onConnect={(handle)=>void connect(handle)} onRespond={(id,action)=>void respondTo(id,action)} onChangeConnection={(handle,action)=>void change(handle,action)} onRespondTag={(id,action)=>void answerTag(id,action)} onRespondMoment={(id,action)=>void answerMoment(id,action)}/>{message&&<div className="circle-toast" role="status">{message}</div>}</>;
 }

@@ -1,26 +1,23 @@
-import { useState } from 'react';
-import { Check, Copy, Link2, Search, Send, UserPlus, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Check, Search, UserPlus, X } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
 import { ProfileMark } from './SocialVisuals';
 
 export type ChapterPerson = { id: string; name: string; handle: string | null; status: string; placeholder: boolean };
 
-export function ChapterPeoplePanel({ city, people, onAddHandle, onAddPlaceholder, onInvite }: { city: string; people: ChapterPerson[]; onAddHandle: (handle: string) => Promise<void>; onAddPlaceholder: (name: string) => Promise<void>; onInvite: (person: ChapterPerson) => Promise<string> }) {
+export function ChapterPeoplePanel({ city, people, friends, onAddFriend }: { city: string; people: ChapterPerson[]; friends: Array<{ displayName: string; handle: string }>; onAddFriend: (handle: string) => Promise<void> }) {
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<'HANDLE' | 'PLACEHOLDER'>('HANDLE');
   const [value, setValue] = useState('');
   const [message, setMessage] = useState('');
-  async function add() {
-    if (!value.trim()) return;
-    try { if (mode === 'HANDLE') await onAddHandle(value); else await onAddPlaceholder(value); setValue(''); setOpen(false); setMessage(mode === 'HANDLE' ? 'Association request sent privately.' : 'Private placeholder added.'); }
+  const normalized = value.replace(/^@+/, '').trim().toLowerCase();
+  const matches = useMemo(() => normalized ? friends.filter((friend) => friend.handle.toLowerCase() === normalized) : friends, [friends, normalized]);
+  async function add(handle: string) {
+    try { await onAddFriend(handle); setValue(''); setOpen(false); setMessage(`@${handle} can confirm this chapter association from Requests.`); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'This person could not be added.'); }
   }
-  async function invite(person: ChapterPerson) {
-    try { const url=await onInvite(person); if (navigator.share) await navigator.share({ title: 'A chapter of my Life Atlas', text: `I added you to a chapter of my Life Atlas in ${city}.`, url }); else { await navigator.clipboard.writeText(url); setMessage('Invitation link copied.'); } }
-    catch (error) { if (error instanceof DOMException && error.name === 'AbortError') return; setMessage(error instanceof Error ? error.message : 'Invitation unavailable.'); }
-  }
-  return <section className="chapter-people-panel"><div className="chapter-people-heading"><div><p>People in this chapter</p><span>Associations stay private until the other person confirms.</span></div><button className="text-button" onClick={() => setOpen((value)=>!value)}>{open ? <><X/>Close</> : <><UserPlus/>Add someone</>}</button></div>
-    {people.length > 0 && <div className="chapter-people-list">{people.map((person)=><div key={person.id}>{person.handle ? <ProfileMark handle={person.handle} size={44}/> : <span className="placeholder-mark">{person.name.charAt(0).toUpperCase()}</span>}<div><strong>{person.name}</strong><small>{person.handle ? `@${person.handle}` : 'Private placeholder'} · {person.status.toLowerCase()}</small></div>{person.placeholder && <button aria-label={`Invite ${person.name}`} onClick={() => void invite(person)}><Send/></button>}{person.status === 'CONFIRMED' && <Check/>}</div>)}</div>}
-    {open && <div className="chapter-person-add"><div className="chapter-person-modes"><button className={mode==='HANDLE'?'active':''} onClick={()=>setMode('HANDLE')}><Search/>Life Atlas person</button><button className={mode==='PLACEHOLDER'?'active':''} onClick={()=>setMode('PLACEHOLDER')}><Link2/>Private placeholder</button></div><label>{mode==='HANDLE'?'Search exact handle':'Their name, visible only to you'}<input value={value} onChange={(event)=>setValue(event.target.value)} placeholder={mode==='HANDLE'?'@priya':'Priya'}/></label><button className="primary-button compact" onClick={() => void add()}>{mode==='HANDLE'?'Request association':'Add privately'}</button></div>}
-    {message && <p className="chapter-people-message" role="status">{message}{message.includes('copied')&&<Copy/>}</p>}
+  return <section className="chapter-people-panel"><div className="chapter-people-heading"><div><p>Friends in this chapter</p><span>Only accepted friends appear here. They must confirm before the association is shown.</span></div><button className="text-button" onClick={() => setOpen((current)=>!current)}>{open ? <><X/>Close</> : <><UserPlus/>Add a friend</>}</button></div>
+    {people.length > 0 && <div className="chapter-people-list">{people.map((person)=><div key={person.id}><ProfileMark handle={person.handle ?? person.name} size={44}/><div><strong>{person.name}</strong><small>@{person.handle} · {person.status.toLowerCase()}</small></div>{person.status === 'CONFIRMED' && <Check/>}</div>)}</div>}
+    {open && <div className="chapter-person-add"><label><Search/>Exact @username<input value={value} onChange={(event)=>setValue(event.target.value)} placeholder="@friend" autoCapitalize="none" autoCorrect="off"/></label>{friends.length ? <div className="chapter-friend-options">{matches.length ? matches.map((friend)=><button key={friend.handle} onClick={()=>void add(friend.handle)}><ProfileMark handle={friend.handle} size={38}/><span><strong>{friend.displayName}</strong><small>@{friend.handle}</small></span><UserPlus/></button>) : <p>No accepted friend matches that exact @username.</p>}</div> : <div className="chapter-people-empty"><p>You do not have any accepted friends yet.</p><Link to="/circle">Find Friends</Link></div>}</div>}
+    {message && <p className="chapter-people-message" role="status">{message}</p>}
   </section>;
 }

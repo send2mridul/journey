@@ -106,7 +106,7 @@ export default function AtlasMap({ routes, trail = [], layer = 'community', year
       const progress = Math.max(0, Math.min(1, (timestamp - startTime) / drawDuration));
       const eased = 1 - (1 - progress) ** 3;
       const particle = coordinates[Math.min(coordinates.length - 1, Math.floor(eased * (coordinates.length - 1)))];
-      (map.getSource('route-particle') as mapboxgl.GeoJSONSource | undefined)?.setData(collection(particle && progress < 1 ? [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: particle } }] : []));
+      (map.getSource('route-particle') as mapboxgl.GeoJSONSource | undefined)?.setData(collection(particle ? [{ type: 'Feature', properties: { progress }, geometry: { type: 'Point', coordinates: particle } }] : []));
       if (map.getLayer('active-marker-halo')) {
         const pulse = (Math.sin(timestamp / 260) + 1) / 2;
         map.setPaintProperty('active-marker-halo', 'circle-radius', ['case', ['==', ['get', 'role'], 'destination'], 17 + pulse * 6, 10 + pulse * 3]);
@@ -210,8 +210,9 @@ export default function AtlasMap({ routes, trail = [], layer = 'community', year
       map.addLayer({ id: 'trail-node', type: 'circle', slot: 'top', source: 'trail-nodes', paint: { 'circle-radius': ['match', ['get', 'role'], 'end', 8, 'start', 7, 6], 'circle-color': ['match', ['get', 'role'], 'end', '#a94529', 'start', '#8d5138', '#c65d37'], 'circle-stroke-width': 2.5, 'circle-stroke-color': '#fff8e8', 'circle-opacity': 1 } });
       map.addLayer({ id: 'trail-node-label', type: 'symbol', slot: 'top', source: 'trail-nodes', layout: { 'text-field': ['to-string', ['get', 'chapter']], 'text-size': 9, 'text-allow-overlap': true, 'text-ignore-placement': true }, paint: { 'text-color': '#fff8e8', 'text-halo-color': '#8f422a', 'text-halo-width': 0.25 } });
       map.addLayer({ id: 'active-marker-halo', type: 'circle', slot: 'top', source: 'active-markers', paint: { 'circle-radius': 10, 'circle-color': '#c65d37', 'circle-opacity': ['case', ['==', ['get', 'role'], 'destination'], 0.24, 0.1], 'circle-blur': 0.45 } });
+      map.addLayer({ id: 'active-marker-core', type: 'circle', slot: 'top', source: 'active-markers', paint: { 'circle-radius': ['case', ['==', ['get', 'role'], 'destination'], 7, 4], 'circle-color': ['case', ['==', ['get', 'role'], 'destination'], '#b95432', '#7f533f'], 'circle-stroke-width': 2.5, 'circle-stroke-color': '#fff8e8', 'circle-opacity': 1 } });
       map.addLayer({ id: 'route-particle-glow', type: 'circle', slot: 'top', source: 'route-particle', paint: { 'circle-radius': 13, 'circle-color': '#fff1cf', 'circle-opacity': 0.24, 'circle-blur': 0.6 } });
-      map.addLayer({ id: 'route-particle', type: 'circle', slot: 'top', source: 'route-particle', paint: { 'circle-radius': 4, 'circle-color': '#fff8dc', 'circle-stroke-width': 2, 'circle-stroke-color': '#b95432' } });
+      map.addLayer({ id: 'route-particle', type: 'circle', slot: 'top', source: 'route-particle', paint: { 'circle-radius': 5.5, 'circle-color': '#fff8dc', 'circle-stroke-width': 3, 'circle-stroke-color': '#b95432' } });
 
       map.on('mouseenter', 'city-pulse', (event) => {
         map.getCanvas().style.cursor = 'pointer';

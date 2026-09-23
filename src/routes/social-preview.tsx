@@ -343,9 +343,8 @@ function SocialPreviewRoute() {
           <ChapterPeoplePanel
             city="Bengaluru"
             people={chapterPeople}
-            onAddHandle={async () => {}}
-            onAddPlaceholder={async () => {}}
-            onInvite={async () => "https://life-atlas-ebon.vercel.app/invite/example"}
+            friends={[{ displayName: 'Rohan Mehta', handle: 'rohanmoves' }]}
+            onAddFriend={async () => {}}
           />
         </main>
       </div>

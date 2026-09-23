@@ -75,6 +75,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "Life Atlas" },
       { name: "description", content: "A living map of where life takes us." },
       { name: "author", content: "Life Atlas" },
+      { name: "robots", content: "noindex, nofollow, noarchive" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],

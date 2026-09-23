@@ -1,0 +1,1 @@
+ALTER TYPE "public"."story_visibility" ADD VALUE IF NOT EXISTS 'FRIENDS' AFTER 'PRIVATE';

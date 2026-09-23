@@ -19,7 +19,7 @@ export type TrailStop = Place & {
   photos?: ChapterPhoto[] | undefined;
 };
 
-export type StoryVisibility = 'PRIVATE' | 'UNLISTED' | 'PUBLIC';
+export type StoryVisibility = 'PRIVATE' | 'FRIENDS' | 'UNLISTED' | 'PUBLIC';
 
 export type ChapterPhoto = {
   id: string;

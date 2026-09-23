@@ -143,6 +143,13 @@ function FriendCard({
         <span>{pathState}</span>
       </div>
       <Link
+        to="/atlas/friend/$handle"
+        params={{ handle: relationship.profile.handle }}
+        className="circle-action"
+      >
+        View Atlas <ArrowRight />
+      </Link>
+      <Link
         to="/paths/$handle"
         params={{ handle: relationship.profile.handle }}
         className="circle-action secondary"
@@ -193,6 +200,7 @@ export function LifeCircleView({
         <div>
           <span>@{data.profile.handle}</span>
           <Link to="/">My Atlas</Link>
+          <Link to="/profile">Profile</Link>
         </div>
       </header>
       <section className="circle-hero">
@@ -204,7 +212,7 @@ export function LifeCircleView({
         <ProfileMark handle={data.profile.handle} size={104} />
       </section>
 
-      <section className="people-search-panel">
+      <section id="circle-find" className="people-search-panel">
         <div className="circle-section-title">
           <div><p className="eyebrow">Find a friend</p><h2>Add by exact @username</h2></div>
           <UserPlus />
@@ -258,12 +266,16 @@ export function LifeCircleView({
       </section>
 
       <nav className="circle-section-nav" aria-label="Life Circle sections">
+        <a href="#circle-find">
+          <span>Find Friends</span>
+          <strong><Search /></strong>
+        </a>
         <a href="#circle-friends">
-          <span>Friends</span>
+          <span>My Friends</span>
           <strong>{data.friends.length}</strong>
         </a>
         <a href="#circle-requests">
-          <span>Requests</span>
+          <span>Friend Requests</span>
           <strong>{requestCount}</strong>
         </a>
       </nav>

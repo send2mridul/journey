@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog';
-import { Copy, Download, ImageOff, Share2, X } from 'lucide-react';
+import { Download, ImageOff, Share2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { TrailStop } from '@/lib/atlas-data';
 import type { ShareCardFormat } from '@/lib/share-card';
@@ -86,9 +86,8 @@ export function SharePreviewDialog({ open, onOpenChange, trail, shareUrl }: { op
         <div className="share-preview-actions">
           <button className="primary-button compact" disabled={!preview} onClick={() => void share()}><Share2 />Share</button>
           <button className="outline-button" disabled={!preview} onClick={() => void download()}><Download />Download</button>
-          <button className="outline-button" disabled={!shareUrl} title={!shareUrl ? 'Choose Unlisted to create a share link.' : undefined} onClick={() => void copyLink()}><Copy />Copy link</button>
         </div>
-        <p className="share-safety-note">Cards include cities and aggregate journey insights only. Memories and photos stay out of the Atlas Card.</p>
+        <p className="share-safety-note">Cards include cities and aggregate journey insights only. They never grant access to your Atlas, memories, or photographs.</p>
         {status && <p className="save-message" role="status">{status}</p>}
       </Dialog.Content>
     </Dialog.Portal>

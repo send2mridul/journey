@@ -5,7 +5,6 @@ import {
   ArrowRight,
   ArrowUp,
   Check,
-  Copy,
   Globe2,
   ImagePlus,
   LoaderCircle,
@@ -20,6 +19,7 @@ import {
   RotateCcw,
   Search,
   Share2,
+  Shield,
   Sparkles,
   Trash2,
   X,
@@ -44,7 +44,7 @@ import { MovementFingerprint } from '@/components/MovementFingerprint';
 import { SharePreviewDialog } from '@/components/SharePreviewDialog';
 import { ChapterPeoplePanel, type ChapterPerson } from '@/components/social/ChapterPeoplePanel';
 import { ChapterAtlasFallback } from '@/components/social/SocialVisuals';
-import { addChapterPerson, createSocialInvite, getChapterPeople } from '@/server/social';
+import { addChapterPerson, getChapterFriendOptions, getChapterPeople, getSocialSession } from '@/server/social';
 
 const AtlasMap = lazy(() => import('@/components/AtlasMap'));
 const reasons = ['Career', 'Study', 'Family', 'Love', 'Opportunity', 'A new start', 'Other'] as const;
@@ -98,7 +98,6 @@ function Index() {
   const [revealed, setRevealed] = useState(false);
   const [trail, setTrail] = useState<TrailStop[]>([]);
   const [trailVisibility, setTrailVisibility] = useState<StoryVisibility>('PRIVATE');
-  const [shareToken, setShareToken] = useState<string | null>(null);
   const [demoStopped, setDemoStopped] = useState(false);
   const [draftId, setDraftId] = useState('');
   const [draftReady, setDraftReady] = useState(false);
@@ -124,11 +123,30 @@ function Index() {
   const loadMyLatestTrail = useServerFn(getMyLatestTrail);
   const claimGuestDraft = useServerFn(claimGuestSaveHandoff);
   const saveCurrentTrail = useServerFn(saveTrail);
+  const prepareGuestSave = useServerFn(createGuestSaveHandoff);
+  const loadAuthCapabilities = useServerFn(getAuthCapabilities);
+  const loadSocialSession = useServerFn(getSocialSession);
   const { data: accountSession, isPending: sessionPending } = authClient.useSession();
+  const [googleAvailable, setGoogleAvailable] = useState<boolean | null>(null);
+  const [socialProfile, setSocialProfile] = useState<{ handle: string } | null>(null);
+  const [authMessage, setAuthMessage] = useState('');
 
   const userRoutes = useMemo(() => routesFromTrail(trail), [trail]);
   const selectedRoute = userRoutes[activeChapter] ?? userRoutes[0];
   const fingerprint = useMemo(() => fingerprintFor(trail), [trail]);
+
+  useEffect(() => {
+    let current = true;
+    void loadAuthCapabilities().then((value) => { if (current) setGoogleAvailable(value.google); }).catch(() => { if (current) setGoogleAvailable(false); });
+    return () => { current = false; };
+  }, [loadAuthCapabilities]);
+
+  useEffect(() => {
+    if (sessionPending || !accountSession?.user) { setSocialProfile(null); return; }
+    let current = true;
+    void loadSocialSession().then((value) => { if (current) setSocialProfile(value.profile ? { handle: value.profile.handle } : null); }).catch(() => { if (current) setSocialProfile(null); });
+    return () => { current = false; };
+  }, [accountSession?.user, loadSocialSession, sessionPending]);
 
   useEffect(() => {
     window.localStorage.removeItem('life-atlas-draft');
@@ -149,15 +167,18 @@ function Index() {
       const saved = response.trail;
       if (!current) return;
       setOwnershipMode(response.authenticated ? 'account' : saved && response.ownership === 'anonymous' ? 'legacy' : 'guest');
-      if (!saved) return;
+      if (!saved) {
+        if (response.authenticated) setTrailVisibility('FRIENDS');
+        return;
+      }
       const first = saved.stops[0];
       const second = saved.stops[1];
       if (!first || !second) return;
       loadedOwnerRef.current = `${ownerKey}:${saved.clientDraftId}`;
-      lastPersistedStateRef.current = trailPersistenceKey(saved.stops, saved.visibility);
+      const restoredVisibility: StoryVisibility = saved.visibility === 'PRIVATE' ? 'PRIVATE' : 'FRIENDS';
+      lastPersistedStateRef.current = trailPersistenceKey(saved.stops, restoredVisibility);
       setTrail(saved.stops);
-      setTrailVisibility(saved.visibility);
-      setShareToken(saved.shareToken);
+      setTrailVisibility(restoredVisibility);
       setOrigin(first);
       setDestination(second);
       setActiveChapter(0);
@@ -201,7 +222,6 @@ function Index() {
           visibility: requestedVisibility,
           stops: requestedTrail.map((stop) => ({ id: stop.id, chapterId: stop.chapterId, arrivalYear: stop.arrivalYear, endYear: stop.endYear, reason: stop.reason as (typeof reasons)[number] | undefined, title: stop.title, memory: stop.memory, privacy: stop.privacy })),
         } });
-        setShareToken(response.shareToken);
         const persistedTrail = requestedTrail.map((stop, index) => {
           const chapterId = response.chapterIds[index];
           return !chapterId || stop.chapterId === chapterId ? stop : { ...stop, chapterId };
@@ -286,6 +306,30 @@ function Index() {
     revealRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  async function beginGoogleSignIn() {
+    if (!googleAvailable) {
+      setAuthMessage('Google sign-in is unavailable right now. This preview is not saved and will be discarded if you refresh.');
+      return;
+    }
+    if (draftId && trail.length >= 2) {
+      const payload = {
+        clientDraftId: draftId,
+        title: 'My Life Trail',
+        visibility: accountSession?.user && trailVisibility === 'PRIVATE' ? 'PRIVATE' : 'FRIENDS' as const,
+        stops: trail.map((stop) => ({ id: stop.id, chapterId: stop.chapterId, arrivalYear: stop.arrivalYear, endYear: stop.endYear, reason: stop.reason as (typeof reasons)[number] | undefined, title: stop.title, memory: stop.memory, privacy: stop.privacy })),
+      };
+      try {
+        if (ownershipMode === 'legacy') await saveCurrentTrail({ data: payload });
+        else if (!accountSession?.user) await prepareGuestSave({ data: payload });
+      } catch (error) {
+        setAuthMessage(error instanceof Error ? error.message : 'Your Life Atlas could not be prepared for sign-in.');
+        return;
+      }
+    }
+    const result = await authClient.signIn.social({ provider: 'google', callbackURL: `${window.location.origin}/#life-trail` });
+    if (result.error) setAuthMessage(result.error.message ?? 'Google sign-in could not start.');
+  }
+
   function openEditor(mode: 'before' | 'after' | 'move') {
     setEditor({ mode });
   }
@@ -332,12 +376,13 @@ function Index() {
   }
 
   return <main className="min-h-screen bg-background text-foreground">
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-border/50 bg-background/75 backdrop-blur-2xl">
-      <div className="mx-auto flex h-16 max-w-[1480px] items-center justify-between px-5 md:px-10">
+    <header className="global-header fixed inset-x-0 top-0 z-50 border-b border-border/50 bg-background/75 backdrop-blur-2xl">
+      <div className="mx-auto flex h-16 max-w-[1480px] items-center justify-between gap-3 px-5 md:px-10">
         <a href="#top" className="flex items-center gap-2 font-semibold"><span className="brand-mark"><Globe2 className="size-4" /></span>Life Atlas</a>
-        <nav className="hidden gap-7 text-sm text-muted-foreground md:flex"><a href="#explore">Explore</a><a href="#life-trail">Life Trails</a><Link to="/circle">My Life Circle</Link></nav>
-        <a href="#journey" className="soft-button">Add your chapter</a>
+        <nav className="global-nav"><a href="#life-trail">My Atlas</a><a href="#explore">Explore</a><Link to="/circle">Find Friends</Link></nav>
+        <div className="header-account">{sessionPending ? <LoaderCircle className="search-spinner" /> : accountSession?.user ? <><span className={`save-status save-status-${persistence}`}>{persistence === 'saving' || persistence === 'loading' ? 'Saving…' : persistence === 'error' ? 'Save issue' : 'Saved'}</span><Link to={socialProfile ? '/profile' : '/circle'} className={socialProfile ? 'profile-link' : 'username-needed'}>{socialProfile ? `@${socialProfile.handle}` : 'Create @username'}</Link></> : <button className="header-google" disabled={googleAvailable !== true} onClick={() => void beginGoogleSignIn()}><span className="google-g">G</span>Continue with Google</button>}</div>
       </div>
+      {authMessage && <p className="header-auth-message" role="status">{authMessage}</p>}
     </header>
 
     <section id="top" className="atlas-hero relative min-h-[100svh] overflow-hidden pt-16">
@@ -393,13 +438,13 @@ function Index() {
         <div className="story-intro"><p className="eyebrow">Your Life Trail</p><h2 className="mt-4 font-editorial text-5xl leading-none md:text-6xl">A life is more than one line.</h2><p className="mt-5 max-w-md leading-7 text-muted-foreground">Each place becomes a chapter. Add them slowly — your story doesn’t need to be finished today.</p><MovementFingerprint trail={trail} className="story-fingerprint" /><div className="trail-total"><strong>{trail.length}</strong><span>places · {formatDistance(fingerprint.totalDistance)}</span></div></div>
         <div>
           <div className="trail-flow">{trail.map((stop, index) => <div className={`trail-place ${Math.max(0, index - 1) === activeChapter ? 'is-active' : ''}`} key={`${stop.id}-${index}`}>
-            <button className="trail-main" onClick={() => setActiveChapter(Math.max(0, index - 1))}><span>{String(index + 1).padStart(2, '0')}</span><div><small>{index === 0 ? 'The beginning' : index === trail.length - 1 ? 'Current chapter' : 'A chapter between'}</small><strong>{stop.city}</strong><p>{stop.region ? `${stop.region}, ` : ''}{stop.country}{stop.arrivalYear ? ` · ${stop.arrivalYear}${stop.endYear ? `–${stop.endYear}` : ''}` : ''}{stop.reason && stop.reason !== 'Other' ? ` · ${stop.reason}` : ''}</p>{stop.title && <b>{stop.title}</b>}{stop.memory && <blockquote>{stop.memory}</blockquote>}{stop.photos?.[0] ? <img src={stop.photos[0].url} alt={stop.photos[0].caption || `Memory from ${stop.city}`} loading="lazy" /> : <ChapterAtlasFallback city={stop.city} country={stop.country} latitude={stop.latitude} longitude={stop.longitude}/>}</div></button>
+            <button className="trail-main" onClick={() => setActiveChapter(Math.max(0, index - 1))}><span>{String(index + 1).padStart(2, '0')}</span><div><small>{index === 0 ? 'The beginning' : index === trail.length - 1 ? 'Current chapter' : 'A chapter between'}</small><strong>{stop.city}</strong><p>{stop.region ? `${stop.region}, ` : ''}{stop.country}{stop.arrivalYear ? ` · ${stop.arrivalYear}${stop.endYear ? `–${stop.endYear}` : ''}` : ''}{stop.reason && stop.reason !== 'Other' ? ` · ${stop.reason}` : ''}</p>{stop.title && <b>{stop.title}</b>}{stop.memory && <blockquote>{stop.memory}</blockquote>}{stop.photos?.length ? <div className={`trail-photo-grid count-${Math.min(3, stop.photos.length)}`}>{stop.photos.slice(0, 3).map((photo) => <img key={photo.id} src={photo.url} alt={photo.caption || `Memory from ${stop.city}`} loading="lazy" />)}{stop.photos.length > 3 && <span>+{stop.photos.length - 3}</span>}</div> : <ChapterAtlasFallback city={stop.city} country={stop.country} latitude={stop.latitude} longitude={stop.longitude}/>}</div></button>
             <div className="trail-actions"><button className="edit-action" aria-label={`Edit ${stop.city}`} onClick={() => editChapter(index)}><Pencil /><span>Edit</span></button>{index > 0 && <><button className="manage-action" aria-label={`Move ${stop.city} earlier`} disabled={index === 1} onClick={() => moveChapter(index, -1)}><ArrowUp /></button><button className="manage-action" aria-label={`Move ${stop.city} later`} disabled={index === trail.length - 1} onClick={() => moveChapter(index, 1)}><ArrowDown /></button><button className="manage-action" aria-label={`Delete ${stop.city}`} disabled={trail.length <= 2} onClick={() => deleteChapter(index)}><Trash2 /></button></>}</div>
             <div className="chapter-story-actions">
               <button className="memory-action" onClick={() => editChapter(index, 'memory')}>{stop.memory || stop.title ? 'Edit memory' : 'Add memory'}</button>
               <button className="memory-action photo-action" onClick={() => editChapter(index, 'photos')}>{stop.photos?.length ? 'Manage photos' : 'Add photos'}</button>
             </div>
-            {stop.chapterId && accountSession?.user && <ChapterPeopleConnected chapterId={stop.chapterId} city={stop.city}/>}
+            {stop.chapterId && accountSession?.user && (socialProfile ? <ChapterPeopleConnected chapterId={stop.chapterId} city={stop.city}/> : <div className="chapter-username-needed"><strong>Create your Life Atlas @username to add friends.</strong><span>Your email stays private; friends find you by exact username.</span><Link to="/circle">Create @username</Link></div>)}
             {chapterEditor?.index === index && <MemoryEditor stop={stop} index={index} total={trail.length} section={chapterEditor.section} onClose={() => setChapterEditor(null)} onSave={(changes) => { setTrail((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...changes } : item)); setChapterEditor(null); }} onPhotosChanged={() => void loadMyLatestTrail().then((response) => response.trail && setTrail(response.trail.stops))} />}
           </div>)}</div>
           <h3 className="mt-9 font-editorial text-3xl">Where did life take you next?</h3>
@@ -407,7 +452,7 @@ function Index() {
           {editor && <ChapterEditor editor={editor} trail={trail} onClose={() => setEditor(null)} onSave={commitChapter} />}
         </div>
       </div>
-      <SaveTrailPanel trail={trail} draftId={draftId} ownershipMode={ownershipMode} persistence={persistence} visibility={trailVisibility} shareToken={shareToken} onVisibility={setTrailVisibility} onReplay={startReplay} />
+      <SaveTrailPanel trail={trail} ownershipMode={ownershipMode} persistence={persistence} visibility={trailVisibility} googleAvailable={googleAvailable} onGoogle={beginGoogleSignIn} onVisibility={setTrailVisibility} onReplay={startReplay} />
     </div></section>}
 
     <ExploreAtlas />
@@ -476,7 +521,7 @@ function ReplayCard({ route, chapter, state, onPause, onRestart, onExit }: { rou
     <p>{route?.year}{route?.reason && route.reason !== 'Other' ? ` · ${route.reason}` : ''}</p>
     {chapter?.title && <strong className="replay-chapter-title">{chapter.title}</strong>}
     {chapter?.memory && <blockquote className="replay-memory">{chapter.memory}</blockquote>}
-    {chapter?.photos?.[0] && <img className="replay-photo" src={chapter.photos[0].url} alt={chapter.photos[0].caption || `Memory from ${chapter.city}`} />}
+    {chapter?.photos?.length ? <div className="replay-photo-strip">{chapter.photos.slice(0, 2).map((photo) => <img className="replay-photo" key={photo.id} src={photo.url} alt={photo.caption || `Memory from ${chapter.city}`} />)}</div> : null}
     <small>{route ? `${route.from.city} → ${route.to.city}` : ''}</small>
     <div className="replay-controls"><button className="outline-button" onClick={onPause}>{state === 'playing' ? <><Pause />Pause</> : <><Play />Continue</>}</button><button className="outline-button" onClick={onRestart}><RotateCcw />Restart</button><button className="text-button" onClick={onExit}>Exit</button></div>
   </div>;
@@ -601,49 +646,10 @@ async function prepareImage(file: File) {
   return { file: new File([blob], `${file.name.replace(/\.[^.]+$/, '') || 'memory'}.webp`, { type: 'image/webp' }), width, height };
 }
 
-function SaveTrailPanel({ trail, draftId, ownershipMode, persistence, visibility, shareToken, onVisibility, onReplay }: { trail: TrailStop[]; draftId: string; ownershipMode: 'guest' | 'legacy' | 'account'; persistence: 'loading' | 'idle' | 'saving' | 'saved' | 'error'; visibility: StoryVisibility; shareToken: string | null; onVisibility: (value: StoryVisibility) => void; onReplay: () => void }) {
+function SaveTrailPanel({ trail, ownershipMode, persistence, visibility, googleAvailable, onGoogle, onVisibility, onReplay }: { trail: TrailStop[]; ownershipMode: 'guest' | 'legacy' | 'account'; persistence: 'loading' | 'idle' | 'saving' | 'saved' | 'error'; visibility: StoryVisibility; googleAvailable: boolean | null; onGoogle: () => Promise<void>; onVisibility: (value: StoryVisibility) => void; onReplay: () => void }) {
   const { data: session, isPending } = authClient.useSession();
-  const save = useServerFn(saveTrail);
-  const prepareGuestSave = useServerFn(createGuestSaveHandoff);
-  const loadAuthCapabilities = useServerFn(getAuthCapabilities);
   const [message, setMessage] = useState('');
-  const [googleAvailable, setGoogleAvailable] = useState<boolean | null>(null);
   const [sharePreviewOpen, setSharePreviewOpen] = useState(false);
-
-  useEffect(() => {
-    let current = true;
-    void loadAuthCapabilities()
-      .then((capabilities) => {
-        if (current) setGoogleAvailable(capabilities.google);
-      })
-      .catch(() => {
-        if (current) setGoogleAvailable(false);
-      });
-    return () => { current = false; };
-  }, [loadAuthCapabilities]);
-
-  async function google() {
-    if (!googleAvailable) {
-      setMessage(ownershipMode === 'legacy' ? 'Google sign-in is unavailable right now. Your legacy Atlas remains available in this browser.' : 'Google sign-in is unavailable right now. This preview has not been saved and will be lost if you refresh or leave.');
-      return;
-    }
-    if (!draftId) return;
-    try {
-      const payload = {
-        clientDraftId: draftId,
-        title: 'My Life Trail',
-        visibility,
-        stops: trail.map((stop) => ({ id: stop.id, chapterId: stop.chapterId, arrivalYear: stop.arrivalYear, endYear: stop.endYear, reason: stop.reason as (typeof reasons)[number] | undefined, title: stop.title, memory: stop.memory, privacy: stop.privacy })),
-      };
-      if (ownershipMode === 'legacy') await save({ data: payload });
-      else await prepareGuestSave({ data: payload });
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Your Life Atlas could not be prepared for sign-in.');
-      return;
-    }
-    const result = await authClient.signIn.social({ provider: 'google', callbackURL: `${window.location.origin}/#life-trail` });
-    if (result.error) setMessage(result.error.message ?? 'Google sign-in is not configured yet.');
-  }
 
   const persistenceCopy = ownershipMode === 'guest'
     ? 'Preview only — not saved. Refreshing or leaving this page will discard it.'
@@ -653,47 +659,32 @@ function SaveTrailPanel({ trail, draftId, ownershipMode, persistence, visibility
         ? 'Could not save this change. We will retry when the trail changes.'
         : 'Legacy Atlas saved in this browser. Sign in to claim it permanently.';
 
-  const shareUrl = shareToken && typeof window !== 'undefined' ? `${window.location.origin}/atlas/${shareToken}` : '';
-
-  async function copyLink() {
-    if (!shareUrl) return;
-    await navigator.clipboard.writeText(shareUrl);
-    setMessage('Private share link copied.');
-  }
-
-  async function nativeShare() {
-    if (!shareUrl) return;
-    if (navigator.share) await navigator.share({ title: 'Life Atlas', text: trail.map((stop) => stop.city).join(' → '), url: shareUrl });
-    else await copyLink();
-  }
-
   return <div className="save-invite">
-    <div><p className="eyebrow">Keep & share your story</p><h3 className="mt-3 font-editorial text-4xl">{ownershipMode === 'guest' ? 'Save your Atlas' : 'Your Atlas belongs to you'}</h3><p className="mt-2 text-sm text-muted-foreground">{ownershipMode === 'guest' ? 'You are exploring a private preview. Sign in with Google when you are ready to keep it.' : 'Private by default. Choose Unlisted when you want to share a hard-to-guess link with family or friends.'}</p></div>
+    <div><p className="eyebrow">Keep your story</p><h3 className="mt-3 font-editorial text-4xl">{ownershipMode === 'guest' ? 'Save your Atlas' : 'Your Atlas belongs to you'}</h3><p className="mt-2 text-sm text-muted-foreground">{ownershipMode === 'guest' ? 'You are exploring a private preview. Google sign-in is required to keep it.' : 'Friends-only by default. Only mutually accepted friends can open the Atlas you permit.'}</p></div>
     <div className="privacy-panel">
-      <div className="privacy-options" role="radiogroup" aria-label="Life Atlas visibility">
+      {session?.user && <div className="privacy-options" role="radiogroup" aria-label="Life Atlas visibility">
+        <button className={visibility === 'FRIENDS' ? 'active' : ''} onClick={() => onVisibility('FRIENDS')}><Shield /><span><strong>Friends-only</strong><small>Mutually accepted friends</small></span></button>
         <button className={visibility === 'PRIVATE' ? 'active' : ''} onClick={() => onVisibility('PRIVATE')}><LockKeyhole /><span><strong>Private</strong><small>Only you</small></span></button>
-        <button className={visibility === 'UNLISTED' ? 'active' : ''} onClick={() => onVisibility('UNLISTED')}><Share2 /><span><strong>Unlisted</strong><small>Anyone with the link</small></span></button>
-        <button disabled={!session?.user} title={!session?.user ? 'Public discovery will be available after permanent Google sign-in is configured.' : undefined} className={visibility === 'PUBLIC' ? 'active' : ''} onClick={() => session?.user && onVisibility('PUBLIC')}><Globe2 /><span><strong>Public</strong><small>{session?.user ? 'Discoverable' : 'Account required'}</small></span></button>
-      </div>
-      {visibility !== 'PRIVATE' && <p className="privacy-reminder">Your cities and any non-private memories will be visible. Exact addresses are never collected.</p>}
-      {shareUrl && visibility !== 'PRIVATE' && <div className="share-actions"><button className="outline-button" onClick={() => void copyLink()}><Copy />Copy link</button><button className="outline-button" onClick={() => void nativeShare()}><Share2 />Share</button></div>}
-      <div className="share-artifacts"><button className="outline-button" onClick={() => setSharePreviewOpen(true)}><Share2 />Share your Life Atlas</button><button className="outline-button" onClick={onReplay}><Play />Replay my life</button></div>
+      </div>}
+      {session?.user && visibility !== 'PRIVATE' && <p className="privacy-reminder">Friends see your route and chapter details, but private memories and photographs remain private.</p>}
+      <div className="share-artifacts"><button className="outline-button" onClick={() => setSharePreviewOpen(true)}><Share2 />Create an Atlas Card</button><button className="outline-button" onClick={onReplay}><Play />Replay my life</button></div>
     </div>
-    {isPending ? <LoaderCircle className="search-spinner" /> : session?.user ? <div className="save-account"><span><Check />Saved to {session.user.email}</span><button className="auth-button" onClick={() => void authClient.signOut()}><LogOut />Sign out</button></div> : <div className="google-only-auth">
+    {isPending ? <LoaderCircle className="search-spinner" /> : session?.user ? <div className="save-account"><span><Check />Saved to your Google account</span><button className="auth-button" onClick={() => void authClient.signOut()}><LogOut />Sign out</button></div> : <div className="google-only-auth">
       <p className={`persistence-state ${persistence === 'error' ? 'is-error' : ''}`}>{persistenceCopy}</p>
-      <button onClick={() => void google()} className="primary-button" disabled={googleAvailable !== true}><span className="google-g">G</span>{googleAvailable === false ? 'Google sign-in needs credentials' : ownershipMode === 'guest' ? 'Save My Atlas with Google' : 'Claim with Google'}</button>
+      <button onClick={() => void onGoogle()} className="primary-button" disabled={googleAvailable !== true}><span className="google-g">G</span>{googleAvailable === false ? 'Google sign-in needs credentials' : ownershipMode === 'guest' ? 'Save My Atlas with Google' : 'Claim with Google'}</button>
     </div>}
     {message && <p className="save-message" role="status">{message}</p>}
     <p className="col-span-full flex items-center gap-1.5 text-xs text-muted-foreground"><LockKeyhole className="size-3" />New previews stay only in memory until Google sign-in. Existing anonymous Atlases can still be safely claimed by their original browser.</p>
-    <SharePreviewDialog open={sharePreviewOpen} onOpenChange={setSharePreviewOpen} trail={trail} shareUrl={shareUrl} />
+    <SharePreviewDialog open={sharePreviewOpen} onOpenChange={setSharePreviewOpen} trail={trail} shareUrl="" />
   </div>;
 }
 
 function ChapterPeopleConnected({ chapterId, city }: { chapterId: string; city: string }) {
   const loadPeople = useServerFn(getChapterPeople);
+  const loadFriends = useServerFn(getChapterFriendOptions);
   const addPerson = useServerFn(addChapterPerson);
-  const makeInvite = useServerFn(createSocialInvite);
   const [people, setPeople] = useState<ChapterPerson[]>([]);
+  const [friends, setFriends] = useState<Array<{ displayName: string; handle: string }>>([]);
 
   async function refresh() {
     const result = await loadPeople({ data: { chapterId } });
@@ -702,28 +693,18 @@ function ChapterPeopleConnected({ chapterId, city }: { chapterId: string; city: 
 
   useEffect(() => {
     let current = true;
-    void loadPeople({ data: { chapterId } })
-      .then((result) => { if (current) setPeople(result.people as ChapterPerson[]); })
-      .catch(() => { if (current) setPeople([]); });
+    void Promise.all([loadPeople({ data: { chapterId } }), loadFriends({ data: { chapterId } })])
+      .then(([peopleResult, friendResult]) => { if (current) { setPeople(peopleResult.people as ChapterPerson[]); setFriends(friendResult.friends); } })
+      .catch(() => { if (current) { setPeople([]); setFriends([]); } });
     return () => { current = false; };
-  }, [chapterId, loadPeople]);
+  }, [chapterId, loadFriends, loadPeople]);
 
   async function addHandle(handle: string) {
     await addPerson({ data: { chapterId, handle: handle.replace(/^@+/, '') } });
     await refresh();
   }
 
-  async function addPlaceholder(placeholderName: string) {
-    await addPerson({ data: { chapterId, placeholderName } });
-    await refresh();
-  }
-
-  async function invite(person: ChapterPerson) {
-    const result = await makeInvite({ data: { kind: 'CHAPTER', chapterPersonId: person.id, message: `I added you to my ${city} chapter.` } });
-    return `${window.location.origin}/invite/${result.token}`;
-  }
-
-  return <ChapterPeoplePanel city={city} people={people} onAddHandle={addHandle} onAddPlaceholder={addPlaceholder} onInvite={invite} />;
+  return <ChapterPeoplePanel city={city} people={people} friends={friends} onAddFriend={addHandle} />;
 }
 
 function CountrySearch({ countries, value, onSelect }: { countries: Array<{ code: string; name: string }>; value: { code: string; name: string } | null; onSelect: (country: { code: string; name: string }) => void }) {
@@ -815,7 +796,7 @@ function ExploreAtlas() {
   return <section id="explore" className="explore-stage">
     <div className="absolute inset-0"><Suspense fallback={<MapLoading />}><AtlasMap routes={routes} layer="community" year={yearTo} onCity={setSelectedCity} cinematic /></Suspense></div>
     <div className="pointer-events-none relative z-10 mx-auto flex min-h-[940px] max-w-[1480px] flex-col px-5 py-20 md:px-10">
-      <div className="pointer-events-auto"><p className="eyebrow">Life Atlas community</p><h2 className="mt-3 font-editorial text-5xl md:text-7xl">Real paths, safely combined.</h2><p className="mt-4 max-w-lg text-sm leading-6 text-muted-foreground">Only patterns supported by at least five opted-in public Life Atlases appear here.</p></div>
+      <div className="pointer-events-auto"><p className="eyebrow">Life Atlas community</p><h2 className="mt-3 font-editorial text-5xl md:text-7xl">Real paths, safely combined.</h2><p className="mt-4 max-w-lg text-sm leading-6 text-muted-foreground">Only anonymous aggregate patterns supported by at least five separately opted-in Atlases appear here. No personal journey is exposed.</p></div>
       <div className="community-explore-control pointer-events-auto">
         <PlaceSearch label="Search one city" value={focus} onSelect={setFocus} icon={<Search />} />
         <div className="perspective-toggle"><button className={perspective === 'from' ? 'active' : ''} onClick={() => setPerspective('from')}>From this place</button><button className={perspective === 'to' ? 'active' : ''} onClick={() => setPerspective('to')}>To this place</button></div>

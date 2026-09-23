@@ -3,7 +3,7 @@ import postgres from 'postgres';
 import { schema } from './schema';
 
 const configuredUrl = process.env['DATABASE_URL'];
-const developmentPlaceholder = 'postgres://life_atlas:life_atlas@127.0.0.1:5432/life_atlas';
+const developmentPlaceholder = 'postgresql://127.0.0.1:5432/life_atlas_unconfigured';
 
 export const databaseConfigured = Boolean(configuredUrl);
 export const sql = postgres(configuredUrl ?? developmentPlaceholder, {
