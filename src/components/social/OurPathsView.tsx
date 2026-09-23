@@ -149,8 +149,10 @@ function SharedPlaceRow({
   onSelect: () => void;
   onConfirm: () => void;
 }) {
-  const years = discovery.sameCityDifferentTimes
-    ? "Different years"
+  const years = !discovery.yearsComparable
+    ? "Years not specified"
+    : discovery.sameCityDifferentTimes
+      ? "Different years"
     : discovery.overlapFrom === discovery.overlapTo
       ? String(discovery.overlapFrom)
       : `${discovery.overlapFrom}–${discovery.overlapTo}`;
@@ -170,19 +172,21 @@ function SharedPlaceRow({
         <p className="eyebrow">
           {confirmed
             ? "Confirmed shared moment"
-            : discovery.sameCityDifferentTimes
+            : !discovery.yearsComparable || discovery.sameCityDifferentTimes
               ? "Shared place"
               : "Overlapping chapter"}
         </p>
         <h3>{discovery.city}</h3>
         <strong>{years}</strong>
         <p>
-          {discovery.sameCityDifferentTimes
+          {!discovery.yearsComparable
+            ? `You both have a chapter in ${discovery.city}. At least one date is unspecified, so no time overlap is claimed.`
+            : discovery.sameCityDifferentTimes
             ? `You both lived in ${discovery.city}, at different times.`
             : `You were both in ${discovery.city} for approximately ${discovery.approximateYears} ${discovery.approximateYears === 1 ? "year" : "years"}. This does not mean you met here.`}
         </p>
       </div>
-      {!discovery.sameCityDifferentTimes && !confirmed ? (
+      {discovery.yearsComparable && !discovery.sameCityDifferentTimes && !confirmed ? (
         <button className="outline-button compact" onClick={onConfirm}>
           Confirm shared moment
         </button>

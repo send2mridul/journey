@@ -24,6 +24,7 @@ export type PathDiscovery = {
   overlapFrom: number | null;
   overlapTo: number | null;
   approximateYears: number;
+  yearsComparable: boolean;
   sameCityDifferentTimes: boolean;
 };
 

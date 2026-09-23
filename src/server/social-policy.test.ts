@@ -124,6 +124,7 @@ describe('Our Paths derivation', () => {
       overlapFrom: 2022,
       overlapTo: 2024,
       approximateYears: 3,
+      yearsComparable: true,
       sameCityDifferentTimes: false,
     }]);
     const serialized = JSON.stringify(discoveries);
@@ -141,6 +142,22 @@ describe('Our Paths derivation', () => {
       2026,
     );
     expect(discoveries[0]).toMatchObject({ sameCityDifferentTimes: true, overlapFrom: null, overlapTo: null, approximateYears: 0 });
+  });
+
+  test('keeps shared geography but does not invent an overlap when a start year is unknown', () => {
+    const discoveries = deriveSharedDiscoveries(
+      [{ ...mridul[0]!, cityId: 2, city: 'Bengaluru', fromYear: null, toYear: 2020 }],
+      [{ ...rohan[0]!, cityId: 2, city: 'Bengaluru', fromYear: 2018, toYear: 2024 }],
+      2026,
+    );
+    expect(discoveries[0]).toMatchObject({
+      city: 'Bengaluru',
+      yearsComparable: false,
+      sameCityDifferentTimes: false,
+      overlapFrom: null,
+      overlapTo: null,
+      approximateYears: 0,
+    });
   });
 
   test('returns an honest empty state when the two routes share no city', () => {
@@ -162,6 +179,7 @@ describe('Our Paths derivation', () => {
       overlapFrom: 2022,
       overlapTo: 2023,
       approximateYears: 2,
+      yearsComparable: true,
       sameCityDifferentTimes: false,
     });
   });

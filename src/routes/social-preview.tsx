@@ -202,6 +202,7 @@ const bengaluru = {
   overlapFrom: 2022,
   overlapTo: 2024,
   approximateYears: 3,
+  yearsComparable: true,
   sameCityDifferentTimes: false,
 };
 const delhi = {
@@ -213,6 +214,7 @@ const delhi = {
   overlapFrom: null,
   overlapTo: null,
   approximateYears: 0,
+  yearsComparable: true,
   sameCityDifferentTimes: true,
 };
 

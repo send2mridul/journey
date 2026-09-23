@@ -66,7 +66,7 @@ export type ComparisonChapter = {
   countryCode: string;
   latitude: number;
   longitude: number;
-  fromYear: number;
+  fromYear: number | null;
   toYear: number | null;
 };
 
@@ -79,6 +79,7 @@ export type SharedDiscovery = {
   overlapFrom: number | null;
   overlapTo: number | null;
   approximateYears: number;
+  yearsComparable: boolean;
   sameCityDifferentTimes: boolean;
 };
 
@@ -87,11 +88,12 @@ export function deriveSharedDiscoveries(mine: ComparisonChapter[], theirs: Compa
   for (const mineChapter of mine) {
     for (const theirChapter of theirs) {
       if (mineChapter.cityId !== theirChapter.cityId) continue;
+      const yearsComparable = mineChapter.fromYear !== null && theirChapter.fromYear !== null;
       const mineTo = mineChapter.toYear ?? nowYear;
       const theirTo = theirChapter.toYear ?? nowYear;
-      const overlapFrom = Math.max(mineChapter.fromYear, theirChapter.fromYear);
-      const overlapTo = Math.min(mineTo, theirTo);
-      const overlaps = overlapFrom <= overlapTo;
+      const overlapFrom = yearsComparable ? Math.max(mineChapter.fromYear!, theirChapter.fromYear!) : null;
+      const overlapTo = yearsComparable ? Math.min(mineTo, theirTo) : null;
+      const overlaps = overlapFrom !== null && overlapTo !== null && overlapFrom <= overlapTo;
       discoveries.push({
         city: mineChapter.city,
         country: mineChapter.country,
@@ -101,7 +103,8 @@ export function deriveSharedDiscoveries(mine: ComparisonChapter[], theirs: Compa
         overlapFrom: overlaps ? overlapFrom : null,
         overlapTo: overlaps ? overlapTo : null,
         approximateYears: overlaps ? Math.max(1, overlapTo - overlapFrom + 1) : 0,
-        sameCityDifferentTimes: !overlaps,
+        yearsComparable,
+        sameCityDifferentTimes: yearsComparable && !overlaps,
       });
     }
   }

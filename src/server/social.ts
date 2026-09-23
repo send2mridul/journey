@@ -367,7 +367,8 @@ async function comparisonChapters(profileId: string) {
   const { sql } = await import('@/db');
   return sql<ComparisonChapter[]>`
     SELECT city.id AS "cityId", city.name AS city, country.name AS country, country.code AS "countryCode",
-      city.latitude, city.longitude, COALESCE(chapter.arrival_year, 1900) AS "fromYear", chapter.end_year AS "toYear"
+      city.latitude, city.longitude, chapter.arrival_year AS "fromYear",
+      COALESCE(chapter.end_year, LEAD(chapter.arrival_year) OVER (ORDER BY chapter.position)) AS "toYear"
     FROM life_trails trail
     JOIN life_chapters chapter ON chapter.trail_id = trail.id
     JOIN cities city ON city.id = chapter.city_id
@@ -384,7 +385,8 @@ async function fullTrail(profileId: string) {
     chapterId: string; position: number; arrivalYear: number | null; endYear: number | null; reason: string;
       cityId: number; city: string; region: string | null; country: string; countryCode: string; latitude: number; longitude: number;
   }>>`
-    SELECT chapter.id::text AS "chapterId", chapter.position, chapter.arrival_year AS "arrivalYear", chapter.end_year AS "endYear", chapter.reason,
+    SELECT chapter.id::text AS "chapterId", chapter.position, chapter.arrival_year AS "arrivalYear",
+      COALESCE(chapter.end_year, LEAD(chapter.arrival_year) OVER (ORDER BY chapter.position)) AS "endYear", chapter.reason,
       city.id AS "cityId", city.name AS city, state.name AS region, country.name AS country, country.code AS "countryCode", city.latitude, city.longitude
     FROM life_trails trail
     JOIN life_chapters chapter ON chapter.trail_id = trail.id
@@ -692,7 +694,7 @@ export const proposeSharedMoment = createServerFn({ method: 'POST' })
     if (!access.compareAllowed) throw new Error('Both people must allow Our Paths before confirming a shared moment.');
     const [mine, theirs] = await Promise.all([comparisonChapters(me.id), comparisonChapters(connection.otherProfileId)]);
     const discovery = deriveSharedDiscoveries(mine, theirs).find((item) => item.city.toLowerCase() === data.city.toLowerCase() && item.overlapFrom === data.yearFrom && item.overlapTo === data.yearTo);
-    if (!discovery || discovery.sameCityDifferentTimes) throw new Error('That shared-city overlap could not be verified.');
+    if (!discovery || !discovery.yearsComparable || discovery.sameCityDifferentTimes) throw new Error('That shared-city overlap could not be verified.');
     const { sql } = await import('@/db');
     const [moment] = await sql<{ id: string }[]>`
       INSERT INTO shared_moments (connection_id, proposed_by_profile_id, city_name, year_from, year_to, title, memory_body, status)
