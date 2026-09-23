@@ -59,6 +59,15 @@ const circleData: CircleData = {
     },
   ],
   outgoing: [],
+  blocked: [
+    {
+      displayName: "Aarav Kapoor",
+      handle: "aarav",
+      avatarUrl: null,
+      mutualConnections: 0,
+      requestStatus: "NONE",
+    },
+  ],
   friends: [
     {
       requestId: "00000000-0000-4000-8000-000000000002",
@@ -321,6 +330,7 @@ function SocialPreviewRoute() {
           onConnect={() => {}}
           onRespond={() => {}}
           onChangeConnection={() => {}}
+          onUnblock={() => {}}
           onRespondTag={() => {}}
           onRespondMoment={() => {}}
         />

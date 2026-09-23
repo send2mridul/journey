@@ -213,6 +213,20 @@ export const getLifeCircle = createServerFn({ method: 'GET' }).handler(async () 
     ORDER BY moment.created_at DESC
     LIMIT 12
   `;
+  const blocked = await sql<Array<{ displayName: string | null; handle: string; image: string | null }>>`
+    SELECT other.display_name AS "displayName", other.handle, account_user.image
+    FROM connections connection
+    JOIN profiles other ON other.id = CASE
+      WHEN connection.low_profile_id = ${me.id}::uuid THEN connection.high_profile_id
+      ELSE connection.low_profile_id
+    END
+    JOIN users account_user ON account_user.id = other.user_id
+    WHERE connection.status = 'BLOCKED'
+      AND connection.blocked_by_profile_id = ${me.id}::uuid
+      AND ${me.id}::uuid IN (connection.low_profile_id, connection.high_profile_id)
+      AND other.handle IS NOT NULL
+    ORDER BY other.handle_normalized
+  `;
   const people = relationships.map((row) => ({
     requestId: row.requestId,
     profile: minimalProfile({ displayName: row.displayName, handle: row.handle, image: row.image }),
@@ -225,6 +239,11 @@ export const getLifeCircle = createServerFn({ method: 'GET' }).handler(async () 
     friends: people.filter((_, index) => relationships[index]?.status === 'ACCEPTED'),
     incoming: people.filter((_, index) => relationships[index]?.status === 'PENDING' && relationships[index]?.incoming),
     outgoing: people.filter((_, index) => relationships[index]?.status === 'PENDING' && !relationships[index]?.incoming),
+    blocked: blocked.map((person) => minimalProfile({
+      displayName: person.displayName,
+      handle: person.handle,
+      image: person.image,
+    })),
     suggestions: [],
     chapterRequests,
     momentRequests,
@@ -318,6 +337,29 @@ export const changeConnection = createServerFn({ method: 'POST' })
       await transaction`DELETE FROM social_activities WHERE connection_id = ${connection.id}::uuid`;
     });
     return { status };
+  });
+
+export const unblockAccount = createServerFn({ method: 'POST' })
+  .validator((value: unknown) => z.object({ handle: handleInput }).parse(value))
+  .handler(async ({ data }) => {
+    const me = await requireSocialProfile();
+    const targetHandle = normalizeHandle(data.handle).normalized;
+    const { sql } = await import('@/db');
+    const [removed] = await sql<{ id: string }[]>`
+      DELETE FROM connections connection
+      USING profiles target
+      WHERE connection.status = 'BLOCKED'
+        AND connection.blocked_by_profile_id = ${me.id}::uuid
+        AND ${me.id}::uuid IN (connection.low_profile_id, connection.high_profile_id)
+        AND target.id = CASE
+          WHEN connection.low_profile_id = ${me.id}::uuid THEN connection.high_profile_id
+          ELSE connection.low_profile_id
+        END
+        AND target.handle_normalized = ${targetHandle}
+      RETURNING connection.id::text AS id
+    `;
+    if (!removed) throw new Error('That account is not in your blocked list.');
+    return { unblocked: true as const };
   });
 
 async function connectionWithHandle(myProfileId: string, handle: string) {

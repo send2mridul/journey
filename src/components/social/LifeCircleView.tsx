@@ -37,6 +37,7 @@ export type CircleData = {
   friends: CircleRelationship[];
   incoming: CircleRelationship[];
   outgoing: CircleRelationship[];
+  blocked: CirclePerson[];
   suggestions: CirclePerson[];
   chapterRequests: Array<{
     tagId: string;
@@ -175,6 +176,7 @@ export function LifeCircleView({
   onConnect,
   onRespond,
   onChangeConnection,
+  onUnblock,
   onRespondTag,
   onRespondMoment,
 }: {
@@ -186,6 +188,7 @@ export function LifeCircleView({
   onConnect: (handle: string) => void;
   onRespond: (requestId: string, action: "ACCEPT" | "IGNORE" | "BLOCK") => void;
   onChangeConnection: (handle: string, action: "REMOVE" | "BLOCK") => void;
+  onUnblock: (handle: string) => void;
   onRespondTag: (tagId: string, action: "CONFIRM" | "DECLINE") => void;
   onRespondMoment: (momentId: string, action: "CONFIRM" | "DECLINE") => void;
 }) {
@@ -277,6 +280,10 @@ export function LifeCircleView({
         <a href="#circle-requests">
           <span>Friend Requests</span>
           <strong>{requestCount}</strong>
+        </a>
+        <a href="#circle-blocked">
+          <span>Blocked Accounts</span>
+          <strong>{data.blocked.length}</strong>
         </a>
       </nav>
 
@@ -405,6 +412,46 @@ export function LifeCircleView({
           <div className="circle-empty">
             <h3>No connections yet.</h3>
             <p>Use an exact @username above to send a private request.</p>
+          </div>
+        )}
+      </section>
+
+      <section id="circle-blocked" className="circle-section circle-blocked-section">
+        <div className="circle-section-title">
+          <div>
+            <p className="eyebrow">Privacy and safety</p>
+            <h2>Blocked accounts</h2>
+          </div>
+          <Ban />
+        </div>
+        <p className="privacy-context">
+          <Shield /> Blocked people cannot find you, open your Atlas, compare paths, or use earlier pair permissions.
+        </p>
+        {data.blocked.length ? (
+          <div className="blocked-account-list">
+            {data.blocked.map((person) => (
+              <article key={person.handle} className="blocked-account-row">
+                <PersonIdentity person={person} />
+                <div>
+                  <span>Pair access revoked</span>
+                  <button
+                    className="outline-button compact"
+                    onClick={() => {
+                      if (window.confirm(`Unblock @${person.handle}? You will not become friends again automatically.`)) {
+                        onUnblock(person.handle);
+                      }
+                    }}
+                  >
+                    Unblock
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="circle-empty compact">
+            <h3>No blocked accounts.</h3>
+            <p>People you block will appear here so you can review or unblock them later.</p>
           </div>
         )}
       </section>

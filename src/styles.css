@@ -264,7 +264,7 @@ footer { display: flex; justify-content: space-between; gap: 20px; border-top: 1
 .life-circle-page .people-search-panel input { color: #17252b; font-size: 1rem; }
 .life-circle-page .people-search-panel > small { display: flex; align-items: center; gap: 6px; padding: 8px 8px 0; color: #66747a; font-size: .6rem; }
 .life-circle-page .people-search-panel > small svg { width: 12px; color: var(--social-cool); }
-.circle-section-nav { display: grid; max-width: 1180px; grid-template-columns: repeat(2, 1fr); margin: 0 auto 24px; border-block: 1px solid #d7d8d4; }
+.circle-section-nav { display: grid; max-width: 1180px; grid-template-columns: repeat(4, 1fr); margin: 0 auto 24px; border-block: 1px solid #d7d8d4; }
 .circle-section-nav a { display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 10px; border-right: 1px solid #d7d8d4; padding: 0 18px; color: #33464e; font-size: .72rem; font-weight: 650; }
 .circle-section-nav a:last-child { border-right: 0; }.circle-section-nav a:hover { background: #fff; color: #17252b; }
 .circle-section-nav strong { display: grid; min-width: 28px; height: 28px; place-items: center; border-radius: 50%; background: #e9ece9; color: #516169; font-size: .62rem; }
@@ -294,6 +294,13 @@ footer { display: flex; justify-content: space-between; gap: 20px; border-top: 1
 .life-circle-page .friend-safety { border-color: #e0e1dd; }
 .life-circle-page .circle-activity-list > div { border-color: #d7d8d4; background: transparent; }.life-circle-page .circle-activity-list i { background: var(--social-cool); }
 .life-circle-page .story-request-card { grid-template-columns: auto 1fr auto; }.life-circle-page .story-request-card .social-profile-mark { width: 54px; height: 54px; }
+.circle-blocked-section .privacy-context { display: flex; align-items: center; gap: 7px; margin-bottom: 20px; }
+.circle-blocked-section .privacy-context svg { width: 15px; flex: none; }
+.blocked-account-list { display: grid; gap: 10px; }
+.blocked-account-row { display: flex; min-height: 84px; align-items: center; justify-content: space-between; gap: 20px; border: 1px solid #d7d8d4; border-radius: 12px; background: #fff; padding: 14px 16px; }
+.blocked-account-row > div:last-child { display: flex; align-items: center; gap: 14px; }
+.blocked-account-row > div:last-child > span { color: #66747a; font-size: .62rem; }
+.circle-empty.compact { min-height: auto; padding: 24px; }
 
 .our-paths-page .paths-hero { min-height: 225px; max-width: 1240px; grid-template-columns: minmax(0, 1fr) minmax(330px, .55fr); gap: 42px; padding: 34px 32px 26px; }
 .our-paths-page .paths-intro h1 { max-width: 760px; margin: 8px 0 10px; color: #17252b; font-size: clamp(3rem, 5vw, 4.35rem); line-height: .94; }
@@ -343,8 +350,8 @@ footer { display: flex; justify-content: space-between; gap: 20px; border-top: 1
 @media (max-width: 680px) {
   .life-circle-page .circle-hero { grid-template-columns: 1fr auto; gap: 12px; padding: 32px 18px 22px; }.life-circle-page .circle-hero h1 { font-size: 3.25rem; }.life-circle-page .circle-hero > div > p:last-child { font-size: .68rem; }.life-circle-page .circle-hero > .social-profile-mark { width: 70px; height: 70px; }
   .life-circle-page .people-search-panel { width: calc(100% - 28px); margin-inline: 14px; padding: 18px; }.handle-friend-search { grid-template-columns: 1fr; }.handle-friend-search > .primary-button { width: 100%; min-height: 48px; }.life-circle-page .people-search-panel label { min-height: 58px; }.life-circle-page .people-search-panel input { font-size: .88rem; }
-  .circle-section-nav { margin-inline: 14px; }.circle-section-nav a { min-height: 56px; flex-direction: column; justify-content: center; padding: 8px 3px; font-size: .6rem; }.circle-section-nav strong { min-width: 22px; height: 22px; }
-  .life-circle-page .circle-section { padding: 38px 18px; }.life-circle-page .circle-section-title h2 { font-size: 1.45rem; }.life-circle-page .friend-grid, .life-circle-page .suggestion-grid { grid-template-columns: 1fr; }.life-circle-page .request-card { grid-template-columns: 1fr; gap: 15px; padding: 18px; }.life-circle-page .request-card .request-copy { grid-column: 1; grid-row: auto; }.life-circle-page .request-actions { flex-direction: row; flex-wrap: wrap; }.life-circle-page .request-actions > * { width: auto; }.life-circle-page .story-request-card { grid-template-columns: auto 1fr; }.life-circle-page .story-request-card .request-actions { grid-column: 1/-1; }
+  .circle-section-nav { margin-inline: 14px; }.circle-section-nav a { min-height: 64px; flex-direction: column; justify-content: center; padding: 8px 3px; text-align: center; font-size: .58rem; }.circle-section-nav strong { min-width: 22px; height: 22px; }
+  .life-circle-page .circle-section { padding: 38px 18px; }.life-circle-page .circle-section-title h2 { font-size: 1.45rem; }.life-circle-page .friend-grid, .life-circle-page .suggestion-grid { grid-template-columns: 1fr; }.life-circle-page .request-card { grid-template-columns: 1fr; gap: 15px; padding: 18px; }.life-circle-page .request-card .request-copy { grid-column: 1; grid-row: auto; }.life-circle-page .request-actions { flex-direction: row; flex-wrap: wrap; }.life-circle-page .request-actions > * { width: auto; }.life-circle-page .story-request-card { grid-template-columns: auto 1fr; }.life-circle-page .story-request-card .request-actions { grid-column: 1/-1; }.blocked-account-row { align-items: flex-start; flex-direction: column; }.blocked-account-row > div:last-child { width: 100%; justify-content: space-between; }
   .our-paths-page .paths-hero { gap: 22px; padding: 34px 18px 28px; }.our-paths-page .paths-intro h1 { font-size: 3.45rem; }.our-paths-page .dual-signatures { width: 100%; justify-self: stretch; }.our-paths-page .movement-signature svg { max-width: 104px; }.our-paths-page .movement-signature span { max-width: 104px; }
   .paths-hero-actions { display: grid; }.paths-hero-actions > * { width: 100%; justify-content: center; }.paths-friend-selector { width: calc(100% - 36px); grid-template-columns: 1fr; gap: 13px; margin-bottom: 16px; padding: 16px 0; }.paths-friend-selector label, .paths-friend-selector > p, .paths-friend-atlas-link { grid-column: 1; }.paths-friend-selector select { width: 100%; }
   .paths-map-stage { padding: 0 0 42px; }.paths-map-heading { display: grid; padding: 14px 18px; }.our-paths-page .path-legend { justify-content: flex-start; }.paths-map-canvas { height: 66svh; min-height: 500px; border-inline: 0; border-radius: 0; }.social-map-recenter { right: 10px; top: 10px; }

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, LockKeyhole, Sparkles } from 'lucide-react';
 import { authClient } from '@/lib/auth-client';
 import { getAuthCapabilities } from '@/server/auth-capabilities';
-import { changeConnection, getLifeCircle, getSocialSession, respondChapterTag, respondConnection, respondSharedMoment, searchPeople, sendConnectionRequest } from '@/server/social';
+import { changeConnection, getLifeCircle, getSocialSession, respondChapterTag, respondConnection, respondSharedMoment, searchPeople, sendConnectionRequest, unblockAccount } from '@/server/social';
 import { LifeCircleView, type CircleData, type CirclePerson } from '@/components/social/LifeCircleView';
 import { SocialProfileForm } from '@/components/social/SocialProfileForm';
 
@@ -23,6 +23,7 @@ function LifeCircleRoute() {
   const changeRelationship = useServerFn(changeConnection);
   const respondTag = useServerFn(respondChapterTag);
   const respondMoment = useServerFn(respondSharedMoment);
+  const unblock = useServerFn(unblockAccount);
   const capabilities = useServerFn(getAuthCapabilities);
   const [sessionState, setSessionState] = useState<Awaited<ReturnType<typeof getSession>> | null>(null);
   const [circle, setCircle] = useState<CircleData | null>(null);
@@ -44,10 +45,11 @@ function LifeCircleRoute() {
   async function change(handle:string,action:'REMOVE'|'BLOCK'){try{await changeRelationship({data:{handle,action}});setMessage(action==='BLOCK'?`@${handle} is blocked and pair access is revoked.`:`@${handle} was removed from your Life Circle.`);await load();}catch(error){setMessage(error instanceof Error?error.message:'Connection could not be updated.');}}
   async function answerTag(tagId:string,action:'CONFIRM'|'DECLINE'){try{await respondTag({data:{tagId,action}});setMessage(action==='CONFIRM'?'Chapter association confirmed.':'Chapter association declined.');await load();}catch(error){setMessage(error instanceof Error?error.message:'Chapter request could not be updated.');}}
   async function answerMoment(momentId:string,action:'CONFIRM'|'DECLINE'){try{await respondMoment({data:{momentId,action,showOnMyAtlas:false}});setMessage(action==='CONFIRM'?'Shared moment confirmed privately.':'Shared moment declined.');await load();}catch(error){setMessage(error instanceof Error?error.message:'Shared moment could not be updated.');}}
+  async function unblockHandle(handle:string){try{await unblock({data:{handle}});setMessage(`@${handle} is unblocked. Pair permissions remain off.`);await load();}catch(error){setMessage(error instanceof Error?error.message:'Account could not be unblocked.');}}
 
   if (!sessionState) return <div className="social-loading">Drawing your Life Circle…</div>;
   if (!sessionState.authenticated) return <SocialGate googleAvailable={googleAvailable} onGoogle={()=>void google()}/>;
   if (!sessionState.profile) return <main className="handle-setup"><Link to="/" className="circle-brand">Life Atlas</Link><SocialProfileForm onSaved={()=>void load()}/></main>;
   if (!circle) return <div className="social-loading">Finding the people in your story…</div>;
-  return <><LifeCircleView data={circle} searchQuery={query} searchResults={results} searching={searching} onSearchQuery={setQuery} onConnect={(handle)=>void connect(handle)} onRespond={(id,action)=>void respondTo(id,action)} onChangeConnection={(handle,action)=>void change(handle,action)} onRespondTag={(id,action)=>void answerTag(id,action)} onRespondMoment={(id,action)=>void answerMoment(id,action)}/>{message&&<div className="circle-toast" role="status">{message}</div>}</>;
+  return <><LifeCircleView data={circle} searchQuery={query} searchResults={results} searching={searching} onSearchQuery={setQuery} onConnect={(handle)=>void connect(handle)} onRespond={(id,action)=>void respondTo(id,action)} onChangeConnection={(handle,action)=>void change(handle,action)} onUnblock={(handle)=>void unblockHandle(handle)} onRespondTag={(id,action)=>void answerTag(id,action)} onRespondMoment={(id,action)=>void answerMoment(id,action)}/>{message&&<div className="circle-toast" role="status">{message}</div>}</>;
 }
