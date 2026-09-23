@@ -426,16 +426,28 @@ export const getFriendAtlas = createServerFn({ method: 'GET' })
   });
 
 export const getOurPaths = createServerFn({ method: 'GET' })
-  .validator((value: unknown) => z.object({ handle: handleInput }).parse(value))
+  .validator((value: unknown) => z.object({ handle: handleInput, additionalHandle: handleInput.optional() }).parse(value))
   .handler(async ({ data }) => {
     const me = await requireSocialProfile();
     const connection = await connectionWithHandle(me.id, data.handle);
     if (!connection || connection.status !== 'ACCEPTED') throw new Error('Our Paths is available only between connected people.');
+    const { sql } = await import('@/db');
+    const friendOptions = await sql<Array<{ displayName: string | null; handle: string }>>`
+      SELECT friend.display_name AS "displayName", friend.handle
+      FROM connections accepted
+      JOIN profiles friend ON friend.id = CASE WHEN accepted.low_profile_id = ${me.id}::uuid THEN accepted.high_profile_id ELSE accepted.low_profile_id END
+      WHERE ${me.id}::uuid IN (accepted.low_profile_id, accepted.high_profile_id)
+        AND accepted.status = 'ACCEPTED'
+        AND friend.handle IS NOT NULL
+        AND friend.handle_normalized <> ${normalizeHandle(data.handle).normalized}
+      ORDER BY friend.handle_normalized
+    `;
     const requesterIsLow = connection.lowProfileId === me.id;
     const access = pairAccess({ requesterIsLow, ...connection });
     const base = {
       me: { displayName: me.displayName || me.handle!, handle: me.handle! },
       other: minimalProfile({ displayName: connection.otherDisplayName, handle: connection.otherHandle, image: connection.otherImage }),
+      friendOptions: friendOptions.map((friend) => ({ displayName: friend.displayName || friend.handle, handle: friend.handle })),
       permissions: {
         compareMine: requesterIsLow ? connection.lowCompareAllowed : connection.highCompareAllowed,
         compareTheirs: requesterIsLow ? connection.highCompareAllowed : connection.lowCompareAllowed,
@@ -450,18 +462,56 @@ export const getOurPaths = createServerFn({ method: 'GET' })
       },
     };
     const theirSharedTrail = access.canViewOtherFullAtlas ? await fullTrail(connection.otherProfileId) : null;
-    if (!access.compareAllowed) return { ...base, discoveries: [], mineTrail: null, theirTrail: theirSharedTrail, moments: [] };
+    let additional: null | {
+      profile: ReturnType<typeof minimalProfile>;
+      permissions: { compareAllowed: boolean; fullComparisonAllowed: boolean; canViewOtherFullAtlas: boolean };
+      discoveries: ReturnType<typeof deriveSharedDiscoveries>;
+      trail: Awaited<ReturnType<typeof fullTrail>> | null;
+    } = null;
+    let additionalMineTrail: Awaited<ReturnType<typeof fullTrail>> | null = null;
+    if (data.additionalHandle && normalizeHandle(data.additionalHandle).normalized !== normalizeHandle(data.handle).normalized) {
+      const extraConnection = await connectionWithHandle(me.id, data.additionalHandle);
+      if (extraConnection?.status === 'ACCEPTED') {
+        const extraRequesterIsLow = extraConnection.lowProfileId === me.id;
+        const extraAccess = pairAccess({ requesterIsLow: extraRequesterIsLow, ...extraConnection });
+        let extraDiscoveries: ReturnType<typeof deriveSharedDiscoveries> = [];
+        let extraTrail: Awaited<ReturnType<typeof fullTrail>> | null = null;
+        if (extraAccess.compareAllowed) {
+          const [mineChapters, extraChapters] = await Promise.all([
+            comparisonChapters(me.id),
+            comparisonChapters(extraConnection.otherProfileId),
+          ]);
+          extraDiscoveries = deriveSharedDiscoveries(mineChapters, extraChapters);
+        }
+        if (extraAccess.fullComparisonAllowed) {
+          [additionalMineTrail, extraTrail] = await Promise.all([
+            fullTrail(me.id),
+            fullTrail(extraConnection.otherProfileId),
+          ]);
+        }
+        additional = {
+          profile: minimalProfile({ displayName: extraConnection.otherDisplayName, handle: extraConnection.otherHandle, image: extraConnection.otherImage }),
+          permissions: {
+            compareAllowed: extraAccess.compareAllowed,
+            fullComparisonAllowed: extraAccess.fullComparisonAllowed,
+            canViewOtherFullAtlas: extraAccess.canViewOtherFullAtlas,
+          },
+          discoveries: extraDiscoveries,
+          trail: extraTrail,
+        };
+      }
+    }
+    if (!access.compareAllowed) return { ...base, discoveries: [], mineTrail: additionalMineTrail, theirTrail: theirSharedTrail, additional, moments: [] };
     const [mineChapters, theirChapters] = await Promise.all([comparisonChapters(me.id), comparisonChapters(connection.otherProfileId)]);
     const discoveries = deriveSharedDiscoveries(mineChapters, theirChapters);
-    const { sql } = await import('@/db');
     const moments = await sql<Array<{ id: string; city: string; yearFrom: number | null; yearTo: number | null; title: string | null; memory: string | null; status: 'PENDING' | 'CONFIRMED' | 'DECLINED'; mineVisible: boolean; theirVisible: boolean }>>`
       SELECT moment.id::text AS id, moment.city_name AS city, moment.year_from AS "yearFrom", moment.year_to AS "yearTo", moment.title, moment.memory_body AS memory, moment.status,
         CASE WHEN ${requesterIsLow} THEN moment.low_profile_visible ELSE moment.high_profile_visible END AS "mineVisible",
         CASE WHEN ${requesterIsLow} THEN moment.high_profile_visible ELSE moment.low_profile_visible END AS "theirVisible"
       FROM shared_moments moment WHERE moment.connection_id = ${connection.id}::uuid AND moment.status <> 'DECLINED' ORDER BY moment.year_from, moment.created_at
     `;
-    const [mineTrail, theirTrail] = access.fullComparisonAllowed ? await Promise.all([fullTrail(me.id), Promise.resolve(theirSharedTrail ?? await fullTrail(connection.otherProfileId))]) : [null, theirSharedTrail];
-    return { ...base, discoveries, mineTrail, theirTrail, moments };
+    const [mineTrail, theirTrail] = access.fullComparisonAllowed ? await Promise.all([fullTrail(me.id), Promise.resolve(theirSharedTrail ?? await fullTrail(connection.otherProfileId))]) : [additionalMineTrail, theirSharedTrail];
+    return { ...base, discoveries, mineTrail, theirTrail, additional, moments };
   });
 
 // Share payloads are minted independently from the on-screen comparison. This

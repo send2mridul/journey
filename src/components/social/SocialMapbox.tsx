@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { LocateFixed } from "lucide-react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -8,7 +8,9 @@ import type { PathDiscovery, SocialTrailStop } from "./SocialVisuals";
 type SocialMapboxProps = {
   mine?: SocialTrailStop[];
   theirs?: SocialTrailStop[];
+  additional?: SocialTrailStop[];
   discoveries?: PathDiscovery[];
+  additionalDiscoveries?: PathDiscovery[];
   activeDiscovery?: number | null;
   replayYear?: number | null;
   onDiscovery?: (index: number) => void;
@@ -19,7 +21,9 @@ type SocialMapboxProps = {
 type MapState = {
   mine: SocialTrailStop[];
   theirs: SocialTrailStop[];
+  additional: SocialTrailStop[];
   discoveries: PathDiscovery[];
+  additionalDiscoveries: PathDiscovery[];
   activeDiscovery: number | null;
   replayYear: number | null;
   place: SocialMapboxProps["place"] | undefined;
@@ -27,6 +31,7 @@ type MapState = {
 
 const MINE = "#b65335";
 const THEIRS = "#315d70";
+const ADDITIONAL = "#78637f";
 const SHARED = "#d19a43";
 
 function collection(features: unknown[]) {
@@ -35,9 +40,28 @@ function collection(features: unknown[]) {
 
 function visibleTrail(trail: SocialTrailStop[], replayYear?: number | null) {
   if (!replayYear) return trail;
-  return trail.filter(
-    (stop, index) => index === 0 || (stop.arrivalYear ?? Number.MAX_SAFE_INTEGER) <= replayYear,
-  );
+  return trail.filter((stop) => stop.arrivalYear !== undefined && stop.arrivalYear <= replayYear);
+}
+
+function currentNode(trail: SocialTrailStop[], replayYear?: number | null) {
+  if (!replayYear) return [];
+  const current = trail
+    .filter(
+      (stop) =>
+        stop.arrivalYear !== undefined &&
+        stop.arrivalYear <= replayYear &&
+        (stop.endYear === undefined || stop.endYear >= replayYear),
+    )
+    .at(-1);
+  return current
+    ? [
+        {
+          type: "Feature" as const,
+          properties: { city: current.city },
+          geometry: { type: "Point" as const, coordinates: [current.longitude, current.latitude] },
+        },
+      ]
+    : [];
 }
 
 function routeFeatures(trail: SocialTrailStop[], replayYear?: number | null) {
@@ -83,7 +107,9 @@ function discoveryNodes(discoveries: PathDiscovery[], replayYear?: number | null
 export default function SocialMapbox({
   mine = [],
   theirs = [],
+  additional = [],
   discoveries = [],
+  additionalDiscoveries = [],
   activeDiscovery = null,
   replayYear = null,
   onDiscovery,
@@ -100,7 +126,9 @@ export default function SocialMapbox({
   const stateRef = useRef<MapState>({
     mine,
     theirs,
+    additional,
     discoveries,
+    additionalDiscoveries,
     activeDiscovery,
     replayYear,
     place,
@@ -110,13 +138,26 @@ export default function SocialMapbox({
       [
         ...mine.map((stop) => `m:${stop.id}:${stop.longitude}:${stop.latitude}`),
         ...theirs.map((stop) => `t:${stop.id}:${stop.longitude}:${stop.latitude}`),
+        ...additional.map((stop) => `a:${stop.id}:${stop.longitude}:${stop.latitude}`),
         ...discoveries.map((item) => `s:${item.city}:${item.longitude}:${item.latitude}`),
+        ...additionalDiscoveries.map(
+          (item) => `as:${item.city}:${item.longitude}:${item.latitude}`,
+        ),
         place ? `p:${place.longitude}:${place.latitude}` : "",
       ].join("|"),
-    [discoveries, mine, place, theirs],
+    [additional, additionalDiscoveries, discoveries, mine, place, theirs],
   );
   onDiscoveryRef.current = onDiscovery;
-  stateRef.current = { mine, theirs, discoveries, activeDiscovery, replayYear, place };
+  stateRef.current = {
+    mine,
+    theirs,
+    additional,
+    discoveries,
+    additionalDiscoveries,
+    activeDiscovery,
+    replayYear,
+    place,
+  };
 
   function updateSources() {
     const map = mapRef.current;
@@ -124,12 +165,20 @@ export default function SocialMapbox({
     const current = stateRef.current;
     const mineFeatures = routeFeatures(current.mine ?? [], current.replayYear);
     const theirFeatures = routeFeatures(current.theirs ?? [], current.replayYear);
+    const additionalFeatures = routeFeatures(current.additional ?? [], current.replayYear);
     const sharedFeatures = discoveryNodes(current.discoveries ?? [], current.replayYear);
+    const additionalSharedFeatures = discoveryNodes(
+      current.additionalDiscoveries ?? [],
+      current.replayYear,
+    );
     (map.getSource("social-mine-route") as mapboxgl.GeoJSONSource)?.setData(
       collection(mineFeatures),
     );
     (map.getSource("social-their-route") as mapboxgl.GeoJSONSource)?.setData(
       collection(theirFeatures),
+    );
+    (map.getSource("social-additional-route") as mapboxgl.GeoJSONSource)?.setData(
+      collection(additionalFeatures),
     );
     (map.getSource("social-mine-nodes") as mapboxgl.GeoJSONSource)?.setData(
       collection(trailNodes(current.mine ?? [], current.replayYear)),
@@ -137,7 +186,22 @@ export default function SocialMapbox({
     (map.getSource("social-their-nodes") as mapboxgl.GeoJSONSource)?.setData(
       collection(trailNodes(current.theirs ?? [], current.replayYear)),
     );
+    (map.getSource("social-additional-nodes") as mapboxgl.GeoJSONSource)?.setData(
+      collection(trailNodes(current.additional ?? [], current.replayYear)),
+    );
+    (map.getSource("social-mine-current") as mapboxgl.GeoJSONSource)?.setData(
+      collection(currentNode(current.mine ?? [], current.replayYear)),
+    );
+    (map.getSource("social-their-current") as mapboxgl.GeoJSONSource)?.setData(
+      collection(currentNode(current.theirs ?? [], current.replayYear)),
+    );
+    (map.getSource("social-additional-current") as mapboxgl.GeoJSONSource)?.setData(
+      collection(currentNode(current.additional ?? [], current.replayYear)),
+    );
     (map.getSource("social-shared") as mapboxgl.GeoJSONSource)?.setData(collection(sharedFeatures));
+    (map.getSource("social-additional-shared") as mapboxgl.GeoJSONSource)?.setData(
+      collection(additionalSharedFeatures),
+    );
     (map.getSource("social-place") as mapboxgl.GeoJSONSource)?.setData(
       collection(
         current.place
@@ -156,60 +220,71 @@ export default function SocialMapbox({
     );
   }
 
-  function frameAll(force = false) {
-    const map = mapRef.current;
-    if (!map || !loadedRef.current) return;
-    const current = stateRef.current;
-    if (current.place) {
-      map.easeTo({
-        center: [current.place.longitude, current.place.latitude],
-        zoom: compact ? 5.4 : 4.8,
-        pitch: 0,
-        bearing: 0,
-        duration: force ? 700 : 0,
-        essential: false,
+  const frameAll = useCallback(
+    (force = false) => {
+      const map = mapRef.current;
+      if (!map || !loadedRef.current) return;
+      const current = stateRef.current;
+      if (current.place) {
+        map.easeTo({
+          center: [current.place.longitude, current.place.latitude],
+          zoom: compact ? 5.4 : 4.8,
+          pitch: 0,
+          bearing: 0,
+          duration: force ? 700 : 0,
+          essential: false,
+        });
+        return;
+      }
+      const coordinates = [
+        ...(current.mine ?? []).map((stop) => [stop.longitude, stop.latitude] as [number, number]),
+        ...(current.theirs ?? []).map(
+          (stop) => [stop.longitude, stop.latitude] as [number, number],
+        ),
+        ...(current.additional ?? []).map(
+          (stop) => [stop.longitude, stop.latitude] as [number, number],
+        ),
+        ...(current.discoveries ?? []).map(
+          (item) => [item.longitude, item.latitude] as [number, number],
+        ),
+        ...(current.additionalDiscoveries ?? []).map(
+          (item) => [item.longitude, item.latitude] as [number, number],
+        ),
+      ];
+      if (!coordinates.length) return;
+      if (coordinates.length === 1) {
+        const [onlyCoordinate] = coordinates;
+        if (!onlyCoordinate) return;
+        map.easeTo({
+          center: onlyCoordinate,
+          zoom: 4.5,
+          pitch: 12,
+          duration: force ? 900 : 0,
+          essential: false,
+        });
+        return;
+      }
+      const bounds = new mapboxgl.LngLatBounds();
+      let previousLongitude = coordinates[0]![0];
+      coordinates.forEach(([longitude, latitude], index) => {
+        const adjusted = index ? shortestLongitude(previousLongitude, longitude) : longitude;
+        previousLongitude = adjusted;
+        bounds.extend([adjusted, latitude]);
       });
-      return;
-    }
-    const coordinates = [
-      ...(current.mine ?? []).map((stop) => [stop.longitude, stop.latitude] as [number, number]),
-      ...(current.theirs ?? []).map((stop) => [stop.longitude, stop.latitude] as [number, number]),
-      ...(current.discoveries ?? []).map(
-        (item) => [item.longitude, item.latitude] as [number, number],
-      ),
-    ];
-    if (!coordinates.length) return;
-    if (coordinates.length === 1) {
-      const [onlyCoordinate] = coordinates;
-      if (!onlyCoordinate) return;
-      map.easeTo({
-        center: onlyCoordinate,
-        zoom: 4.5,
+      const mobile = window.innerWidth < 700;
+      map.fitBounds(bounds, {
+        padding: mobile
+          ? { top: 70, bottom: 150, left: 44, right: 44 }
+          : { top: 80, bottom: 90, left: 80, right: 80 },
+        maxZoom: 5.1,
+        duration: force ? 1000 : 0,
         pitch: 12,
-        duration: force ? 900 : 0,
+        bearing: 0,
         essential: false,
       });
-      return;
-    }
-    const bounds = new mapboxgl.LngLatBounds();
-    let previousLongitude = coordinates[0]![0];
-    coordinates.forEach(([longitude, latitude], index) => {
-      const adjusted = index ? shortestLongitude(previousLongitude, longitude) : longitude;
-      previousLongitude = adjusted;
-      bounds.extend([adjusted, latitude]);
-    });
-    const mobile = window.innerWidth < 700;
-    map.fitBounds(bounds, {
-      padding: mobile
-        ? { top: 70, bottom: 150, left: 44, right: 44 }
-        : { top: 80, bottom: 90, left: 80, right: 80 },
-      maxZoom: 5.1,
-      duration: force ? 1000 : 0,
-      pitch: 12,
-      bearing: 0,
-      essential: false,
-    });
-  }
+    },
+    [compact],
+  );
 
   useEffect(() => {
     if (!containerRef.current || !token) return;
@@ -227,7 +302,7 @@ export default function SocialMapbox({
       zoom: current.place ? 5.4 : 1.6,
       pitch: current.place ? 0 : 12,
       bearing: 0,
-      projection: "mercator",
+      projection: compact ? "mercator" : "globe",
       attributionControl: true,
       antialias: true,
       scrollZoom: false,
@@ -258,9 +333,15 @@ export default function SocialMapbox({
       [
         "social-mine-route",
         "social-their-route",
+        "social-additional-route",
         "social-mine-nodes",
         "social-their-nodes",
+        "social-additional-nodes",
+        "social-mine-current",
+        "social-their-current",
+        "social-additional-current",
         "social-shared",
+        "social-additional-shared",
         "social-place",
       ].forEach((id) =>
         map.addSource(id, {
@@ -296,6 +377,19 @@ export default function SocialMapbox({
         },
       });
       map.addLayer({
+        id: "social-additional-glow",
+        type: "line",
+        slot: "top",
+        source: "social-additional-route",
+        paint: {
+          "line-color": ADDITIONAL,
+          "line-width": 12,
+          "line-opacity": 0.14,
+          "line-blur": 8,
+          "line-offset": 4,
+        },
+      });
+      map.addLayer({
         id: "social-mine-line",
         type: "line",
         slot: "top",
@@ -308,6 +402,18 @@ export default function SocialMapbox({
         slot: "top",
         source: "social-their-route",
         paint: { "line-color": THEIRS, "line-width": 4, "line-opacity": 0.96, "line-offset": 2 },
+      });
+      map.addLayer({
+        id: "social-additional-line",
+        type: "line",
+        slot: "top",
+        source: "social-additional-route",
+        paint: {
+          "line-color": ADDITIONAL,
+          "line-width": 4,
+          "line-opacity": 0.92,
+          "line-offset": 4,
+        },
       });
       map.addLayer({
         id: "social-mine-node",
@@ -332,6 +438,48 @@ export default function SocialMapbox({
           "circle-stroke-width": 3,
           "circle-stroke-color": THEIRS,
         },
+      });
+      map.addLayer({
+        id: "social-additional-node",
+        type: "circle",
+        slot: "top",
+        source: "social-additional-nodes",
+        paint: {
+          "circle-radius": 5,
+          "circle-color": "#fbf8fc",
+          "circle-stroke-width": 3,
+          "circle-stroke-color": ADDITIONAL,
+        },
+      });
+      [
+        ["mine", MINE],
+        ["their", THEIRS],
+        ["additional", ADDITIONAL],
+      ].forEach(([owner, color]) => {
+        map.addLayer({
+          id: `social-${owner}-current-halo`,
+          type: "circle",
+          slot: "top",
+          source: `social-${owner}-current`,
+          paint: {
+            "circle-radius": 21,
+            "circle-color": color!,
+            "circle-opacity": 0.2,
+            "circle-blur": 0.35,
+          },
+        });
+        map.addLayer({
+          id: `social-${owner}-current-node`,
+          type: "circle",
+          slot: "top",
+          source: `social-${owner}-current`,
+          paint: {
+            "circle-radius": 8,
+            "circle-color": color!,
+            "circle-stroke-width": 3,
+            "circle-stroke-color": "#fffaf0",
+          },
+        });
       });
       map.addLayer({
         id: "social-shared-halo",
@@ -370,6 +518,18 @@ export default function SocialMapbox({
           "text-allow-overlap": true,
         },
         paint: { "text-color": "#17252b", "text-halo-color": "#fffaf0", "text-halo-width": 2 },
+      });
+      map.addLayer({
+        id: "social-additional-shared-node",
+        type: "circle",
+        slot: "top",
+        source: "social-additional-shared",
+        paint: {
+          "circle-radius": 8,
+          "circle-color": ADDITIONAL,
+          "circle-stroke-width": 3,
+          "circle-stroke-color": "#fffaf0",
+        },
       });
       map.addLayer({
         id: "social-place-halo",
@@ -429,7 +589,7 @@ export default function SocialMapbox({
       loadedRef.current = false;
       map.remove();
     };
-  }, [compact, token]);
+  }, [compact, frameAll, token]);
 
   useEffect(() => {
     updateSources();
@@ -463,7 +623,7 @@ export default function SocialMapbox({
         aria-label={
           place
             ? `Map of ${place.city}, ${place.country}`
-            : "Interactive map comparing two permitted Life Atlas paths"
+            : "Rotatable map comparing permitted Life Atlas paths"
         }
       />
       {!compact ? (
