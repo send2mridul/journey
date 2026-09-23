@@ -44,6 +44,12 @@ export const Route = createFileRoute('/api/upload')({
                 validUntil: Date.now() + 5 * 60 * 1000,
                 addRandomSuffix: true,
                 allowOverwrite: false,
+                // The review deployment is intentionally served from a stable
+                // alias while Vercel reports it as the production environment.
+                // Letting @vercel/blob infer this URL would therefore send its
+                // completion callback to the live production domain instead of
+                // the host that authorized the upload.
+                callbackUrl: new URL('/api/upload', request.url).toString(),
                 tokenPayload: JSON.stringify({ ...payload, trailId }),
               };
             },
@@ -86,6 +92,13 @@ export const Route = createFileRoute('/api/upload')({
           });
           return Response.json(result, { headers: responseHeaders });
         } catch (error) {
+          console.error(JSON.stringify({
+            level: 'error',
+            message: 'Private photo upload callback failed',
+            route: '/api/upload',
+            requestId: request.headers.get('x-vercel-id'),
+            error: error instanceof Error ? error.message : 'Unknown upload error',
+          }));
           return Response.json({ message: error instanceof Error ? error.message : 'Upload could not be authorized.' }, { status: 400, headers: responseHeaders });
         }
       },
