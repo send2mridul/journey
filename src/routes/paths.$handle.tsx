@@ -21,7 +21,20 @@ function OurPathsRoute() {
   const [sharePreview, setSharePreview] = useState('');
   const [shareOpen, setShareOpen] = useState(false);
   const load = useCallback(async () => { try { setData(await loadPaths({ data: { handle } }) as OurPathsData); setError(''); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Our Paths is not available.'); } }, [handle, loadPaths]);
-  useEffect(()=>{void load();},[load]);
+  useEffect(() => {
+    void load();
+    const revalidate = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
+    window.addEventListener('focus', revalidate);
+    document.addEventListener('visibilitychange', revalidate);
+    const timer = window.setInterval(revalidate, 2_500);
+    return () => {
+      window.removeEventListener('focus', revalidate);
+      document.removeEventListener('visibilitychange', revalidate);
+      window.clearInterval(timer);
+    };
+  }, [load]);
   async function permission(kind:'COMPARE'|'ATLAS'|'EXTERNAL_SHARE',allowed:boolean){try{await updatePermission({data:{handle,permission:kind,allowed}});setMessage(allowed?'Permission updated.':'Permission revoked immediately.');await load();}catch(reason){setMessage(reason instanceof Error?reason.message:'Permission could not be updated.');}}
   async function confirmMoment(discovery:PathDiscovery){try{await proposeMoment({data:{handle,city:discovery.city,yearFrom:discovery.overlapFrom,yearTo:discovery.overlapTo}});setMessage(`${data?.other.displayName || 'Your connection'} can now confirm this shared moment.`);await load();}catch(reason){setMessage(reason instanceof Error?reason.message:'Shared moment unavailable.');}}
   async function sharePaths(){try{setSharePreview('');setShareOpen(true);const payload=await loadShareData({data:{handle}});const {renderOurPathsCard}=await import('@/lib/share-card');setSharePreview(await renderOurPathsCard(payload));}catch(reason){setShareOpen(false);setMessage(reason instanceof Error?reason.message:'Our Paths sharing is not available.');}}
