@@ -55,8 +55,8 @@ try {
   async function connect(first, second, status = "ACCEPTED") {
     const [low, high] = pair(profiles[first], profiles[second]);
     const [row] = await connection`
-      INSERT INTO connections (low_profile_id, high_profile_id, requester_profile_id, recipient_profile_id, status, responded_at)
-      VALUES (${low}::uuid, ${high}::uuid, ${profiles[first]}::uuid, ${profiles[second]}::uuid, ${status}::connection_status, CASE WHEN ${status} = 'ACCEPTED' THEN now() END)
+      INSERT INTO connections (low_profile_id, high_profile_id, requester_profile_id, recipient_profile_id, status, blocked_by_profile_id, responded_at)
+      VALUES (${low}::uuid, ${high}::uuid, ${profiles[first]}::uuid, ${profiles[second]}::uuid, ${status}::connection_status, CASE WHEN ${status} = 'BLOCKED' THEN ${profiles[first]}::uuid END, CASE WHEN ${status} IN ('ACCEPTED', 'BLOCKED') THEN now() END)
       RETURNING id::text AS id
     `;
     if (status === "ACCEPTED") await connection`INSERT INTO connection_permissions (connection_id) VALUES (${row.id}::uuid)`;
@@ -177,6 +177,85 @@ try {
     SELECT id FROM connections WHERE id = ${blockedConnection}::uuid AND status = 'ACCEPTED'
   `;
 
+  const [defaultVisibility] = await connection`
+    SELECT column_default AS value
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'life_trails' AND column_name = 'visibility'
+  `;
+  await connection`UPDATE life_trails SET visibility = 'FRIENDS', updated_at = now() WHERE id = ${trail.id}::uuid`;
+  const [friendChapter] = await connection`
+    INSERT INTO life_chapters (trail_id, city_id, arrival_year, reason, position)
+    VALUES (${trail.id}::uuid, ${city.id}, 2022, 'Career', 0)
+    RETURNING id::text AS id
+  `;
+  const [friendMedia] = await connection`
+    INSERT INTO chapter_media (life_chapter_id, storage_key, mime_type, width, height)
+    VALUES (${friendChapter.id}::uuid, ${`proof/${suffix}-friend.webp`}, 'image/webp', 1200, 800)
+    RETURNING id::text AS id
+  `;
+  const [ankitTrail] = await connection`
+    INSERT INTO life_trails (profile_id, client_draft_id, visibility)
+    VALUES (${profiles.ankit}::uuid, ${randomUUID()}::uuid, 'PRIVATE') RETURNING id::text AS id
+  `;
+  const friendsOnlyAccess = await connection`
+    SELECT trail.id
+    FROM life_trails trail
+    WHERE trail.id = ${trail.id}::uuid
+      AND trail.visibility IN ('FRIENDS', 'PUBLIC')
+      AND EXISTS (
+        SELECT 1 FROM connections relationship
+        WHERE relationship.low_profile_id = LEAST(${profiles.mridul}::uuid, trail.profile_id)
+          AND relationship.high_profile_id = GREATEST(${profiles.mridul}::uuid, trail.profile_id)
+          AND relationship.status = 'ACCEPTED'
+      )
+  `;
+  const privateFriendAccess = await connection`
+    SELECT trail.id
+    FROM life_trails trail
+    WHERE trail.id = ${ankitTrail.id}::uuid
+      AND trail.visibility IN ('FRIENDS', 'PUBLIC')
+      AND EXISTS (
+        SELECT 1 FROM connections relationship
+        WHERE relationship.low_profile_id = LEAST(${profiles.mridul}::uuid, trail.profile_id)
+          AND relationship.high_profile_id = GREATEST(${profiles.mridul}::uuid, trail.profile_id)
+          AND relationship.status = 'ACCEPTED'
+      )
+  `;
+  const friendMediaAccess = await connection`
+    SELECT media.id
+    FROM chapter_media media
+    JOIN life_chapters chapter ON chapter.id = media.life_chapter_id
+    JOIN life_trails media_trail ON media_trail.id = chapter.trail_id
+    JOIN profiles owner ON owner.id = media_trail.profile_id
+    WHERE media.id = ${friendMedia.id}::uuid
+      AND media_trail.visibility IN ('FRIENDS', 'PUBLIC')
+      AND COALESCE(chapter.privacy_override, media_trail.visibility) <> 'PRIVATE'
+      AND COALESCE(media.privacy_override, chapter.privacy_override, media_trail.visibility) <> 'PRIVATE'
+      AND EXISTS (
+        SELECT 1 FROM connections relationship
+        WHERE relationship.low_profile_id = LEAST(${profiles.mridul}::uuid, owner.id)
+          AND relationship.high_profile_id = GREATEST(${profiles.mridul}::uuid, owner.id)
+          AND relationship.status = 'ACCEPTED'
+      )
+  `;
+  await connection`UPDATE chapter_media SET privacy_override = 'PRIVATE' WHERE id = ${friendMedia.id}::uuid`;
+  const privateMediaAccess = await connection`
+    SELECT id FROM chapter_media
+    WHERE id = ${friendMedia.id}::uuid AND privacy_override <> 'PRIVATE'
+  `;
+  const [removedBlock] = await connection`
+    DELETE FROM connections
+    WHERE id = ${blockedConnection}::uuid
+      AND status = 'BLOCKED'
+      AND blocked_by_profile_id = ${profiles.mridul}::uuid
+    RETURNING id
+  `;
+  const blockRecoveryConnection = await connection`
+    INSERT INTO connections (low_profile_id, high_profile_id, requester_profile_id, recipient_profile_id, status)
+    VALUES (LEAST(${profiles.mridul}::uuid, ${profiles.blocked}::uuid), GREATEST(${profiles.mridul}::uuid, ${profiles.blocked}::uuid), ${profiles.mridul}::uuid, ${profiles.blocked}::uuid, 'PENDING')
+    RETURNING id
+  `;
+
   console.log(JSON.stringify({
     migration: {
       tables: tables.map((row) => row.table_name),
@@ -198,6 +277,15 @@ try {
       changedComparisonIdRejected: unauthorizedComparisonMutation.length === 0,
       changedSharedMomentIdRejected: unauthorizedMomentResponse.length === 0,
       blockedRelationshipUnavailable: blockedVisible.length === 0,
+    },
+    friendsOnlyModel: {
+      newTrailDefaultIsFriendsOnly: String(defaultVisibility?.value ?? '').includes('FRIENDS'),
+      acceptedFriendCanReadFriendsOnlyTrail: friendsOnlyAccess.length === 1,
+      acceptedFriendCannotReadPrivateTrail: privateFriendAccess.length === 0,
+      multiFriendChecksStayIndependent: friendsOnlyAccess.length === 1 && privateFriendAccess.length === 0,
+      friendsOnlyMediaIsReadable: friendMediaAccess.length === 1,
+      privateMediaOverrideIsImmediate: privateMediaAccess.length === 0,
+      ownerCanUnblockAndRequestAgain: Boolean(removedBlock) && blockRecoveryConnection.length === 1,
     },
     transaction: "rolled back; no fixture data persisted",
   }, null, 2));

@@ -40,21 +40,23 @@ export type PairPermissionState = {
   highAtlasShared: boolean;
   lowExternalShareAllowed?: boolean;
   highExternalShareAllowed?: boolean;
+  requesterFriendsSharing: boolean;
+  otherFriendsSharing: boolean;
 };
 
 export function pairAccess(state: PairPermissionState) {
   const connected = state.status === 'ACCEPTED';
-  const compareAllowed = connected && state.lowCompareAllowed && state.highCompareAllowed;
-  const requesterFullShared = state.requesterIsLow ? state.lowAtlasShared : state.highAtlasShared;
-  const otherFullShared = state.requesterIsLow ? state.highAtlasShared : state.lowAtlasShared;
-  const externalShareAllowed = compareAllowed
+  const compareAllowed = connected && state.otherFriendsSharing;
+  const externalShareAllowed = connected
+    && state.requesterFriendsSharing
+    && state.otherFriendsSharing
     && Boolean(state.lowExternalShareAllowed)
     && Boolean(state.highExternalShareAllowed);
   return {
     connected,
     compareAllowed,
-    canViewOtherFullAtlas: connected && otherFullShared,
-    fullComparisonAllowed: connected && requesterFullShared && otherFullShared,
+    canViewOtherFullAtlas: compareAllowed,
+    fullComparisonAllowed: compareAllowed,
     externalShareAllowed,
   };
 }

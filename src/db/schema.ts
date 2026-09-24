@@ -128,7 +128,7 @@ export const lifeTrails = pgTable('life_trails', {
   clientDraftId: uuid('client_draft_id').notNull(),
   title: text('title').notNull().default('My Life Trail'),
   publicTitle: text('public_title'),
-  visibility: storyVisibilityEnum('visibility').notNull().default('PRIVATE'),
+  visibility: storyVisibilityEnum('visibility').notNull().default('FRIENDS'),
   shareToken: text('share_token'),
   publishedAt: timestamp('published_at', { withTimezone: true }),
   claimedAt: timestamp('claimed_at', { withTimezone: true }),

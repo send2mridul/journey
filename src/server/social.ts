@@ -8,7 +8,7 @@ const handleInput = z.string().trim().min(1).max(30);
 const discoverabilityInput = z.enum(['DISCOVERABLE', 'LIMITED', 'HIDDEN']);
 const friendListVisibilityInput = z.enum(['ONLY_ME', 'FRIENDS']);
 const requestIdInput = z.string().uuid();
-const permissionInput = z.enum(['COMPARE', 'ATLAS', 'EXTERNAL_SHARE']);
+const permissionInput = z.literal('EXTERNAL_SHARE');
 
 type SocialProfile = { id: string; userId: string; displayName: string | null; handle: string | null; handleNormalized: string | null; discoverability: 'DISCOVERABLE' | 'LIMITED' | 'HIDDEN'; friendListVisibility: 'ONLY_ME' | 'FRIENDS'; image: string | null };
 type SocialPayload = Record<string, string | number | boolean | null>;
@@ -176,17 +176,19 @@ async function suggestionRows(profileId: string) {
 export const getLifeCircle = createServerFn({ method: 'GET' }).handler(async () => {
   const me = await requireSocialProfile();
   const { sql } = await import('@/db');
-  const relationships = await sql<Array<{ requestId: string; otherProfileId: string; displayName: string | null; handle: string; image: string | null; status: 'PENDING' | 'ACCEPTED'; incoming: boolean; compareMine: boolean; compareTheirs: boolean; atlasMine: boolean; atlasTheirs: boolean }>>`
+  const relationships = await sql<Array<{ requestId: string; otherProfileId: string; displayName: string | null; handle: string; image: string | null; status: 'PENDING' | 'ACCEPTED'; incoming: boolean; atlasAvailable: boolean }>>`
     SELECT connection.id::text AS "requestId", other.id::text AS "otherProfileId", other.display_name AS "displayName", other.handle, account_user.image,
       connection.status, connection.recipient_profile_id = ${me.id}::uuid AS incoming,
-      CASE WHEN connection.low_profile_id = ${me.id}::uuid THEN COALESCE(permission.low_compare_allowed, false) ELSE COALESCE(permission.high_compare_allowed, false) END AS "compareMine",
-      CASE WHEN connection.low_profile_id = ${me.id}::uuid THEN COALESCE(permission.high_compare_allowed, false) ELSE COALESCE(permission.low_compare_allowed, false) END AS "compareTheirs",
-      CASE WHEN connection.low_profile_id = ${me.id}::uuid THEN COALESCE(permission.low_atlas_shared, false) ELSE COALESCE(permission.high_atlas_shared, false) END AS "atlasMine",
-      CASE WHEN connection.low_profile_id = ${me.id}::uuid THEN COALESCE(permission.high_atlas_shared, false) ELSE COALESCE(permission.low_atlas_shared, false) END AS "atlasTheirs"
+      COALESCE((
+        SELECT shared_trail.visibility IN ('FRIENDS', 'PUBLIC')
+        FROM life_trails shared_trail
+        WHERE shared_trail.profile_id = other.id
+        ORDER BY shared_trail.updated_at DESC, shared_trail.created_at DESC
+        LIMIT 1
+      ), false) AS "atlasAvailable"
     FROM connections connection
     JOIN profiles other ON other.id = CASE WHEN connection.low_profile_id = ${me.id}::uuid THEN connection.high_profile_id ELSE connection.low_profile_id END
     JOIN users account_user ON account_user.id = other.user_id
-    LEFT JOIN connection_permissions permission ON permission.connection_id = connection.id
     WHERE ${me.id}::uuid IN (connection.low_profile_id, connection.high_profile_id) AND connection.status IN ('PENDING', 'ACCEPTED')
     ORDER BY connection.status, connection.created_at DESC
   `;
@@ -231,8 +233,7 @@ export const getLifeCircle = createServerFn({ method: 'GET' }).handler(async () 
     requestId: row.requestId,
     profile: minimalProfile({ displayName: row.displayName, handle: row.handle, image: row.image }),
     incoming: row.incoming,
-    compare: { mine: row.compareMine, theirs: row.compareTheirs },
-    atlas: { mine: row.atlasMine, theirs: row.atlasTheirs },
+    atlasAvailable: row.atlasAvailable,
   }));
   return {
     profile: { displayName: me.displayName, handle: me.handle!, discoverability: me.discoverability, friendListVisibility: me.friendListVisibility },
@@ -370,12 +371,15 @@ async function connectionWithHandle(myProfileId: string, handle: string) {
     otherProfileId: string; otherDisplayName: string | null; otherHandle: string; otherImage: string | null;
     lowCompareAllowed: boolean; highCompareAllowed: boolean; lowAtlasShared: boolean; highAtlasShared: boolean;
     lowExternalShareAllowed: boolean; highExternalShareAllowed: boolean;
+    myFriendsSharing: boolean; otherFriendsSharing: boolean;
   }>>`
     SELECT connection.id::text AS id, connection.low_profile_id::text AS "lowProfileId", connection.high_profile_id::text AS "highProfileId", connection.status,
       other.id::text AS "otherProfileId", other.display_name AS "otherDisplayName", other.handle AS "otherHandle", account_user.image AS "otherImage",
       COALESCE(permission.low_compare_allowed, false) AS "lowCompareAllowed", COALESCE(permission.high_compare_allowed, false) AS "highCompareAllowed",
       COALESCE(permission.low_atlas_shared, false) AS "lowAtlasShared", COALESCE(permission.high_atlas_shared, false) AS "highAtlasShared",
-      COALESCE(permission.low_external_share_allowed, false) AS "lowExternalShareAllowed", COALESCE(permission.high_external_share_allowed, false) AS "highExternalShareAllowed"
+      COALESCE(permission.low_external_share_allowed, false) AS "lowExternalShareAllowed", COALESCE(permission.high_external_share_allowed, false) AS "highExternalShareAllowed",
+      COALESCE((SELECT mine_trail.visibility IN ('FRIENDS', 'PUBLIC') FROM life_trails mine_trail WHERE mine_trail.profile_id = ${myProfileId}::uuid ORDER BY mine_trail.updated_at DESC, mine_trail.created_at DESC LIMIT 1), false) AS "myFriendsSharing",
+      COALESCE((SELECT other_trail.visibility IN ('FRIENDS', 'PUBLIC') FROM life_trails other_trail WHERE other_trail.profile_id = other.id ORDER BY other_trail.updated_at DESC, other_trail.created_at DESC LIMIT 1), false) AS "otherFriendsSharing"
     FROM connections connection
     JOIN profiles other ON other.id = CASE WHEN connection.low_profile_id = ${myProfileId}::uuid THEN connection.high_profile_id ELSE connection.low_profile_id END
     JOIN users account_user ON account_user.id = other.user_id
@@ -394,14 +398,8 @@ export const setPairPermission = createServerFn({ method: 'POST' })
     const mineIsLow = connection.lowProfileId === me.id;
     const { sql } = await import('@/db');
     await sql`INSERT INTO connection_permissions (connection_id) VALUES (${connection.id}::uuid) ON CONFLICT DO NOTHING`;
-    if (data.permission === 'COMPARE' && mineIsLow) await sql`UPDATE connection_permissions SET low_compare_allowed = ${data.allowed}, updated_at = now() WHERE connection_id = ${connection.id}::uuid`;
-    if (data.permission === 'COMPARE' && !mineIsLow) await sql`UPDATE connection_permissions SET high_compare_allowed = ${data.allowed}, updated_at = now() WHERE connection_id = ${connection.id}::uuid`;
-    if (data.permission === 'ATLAS' && mineIsLow) await sql`UPDATE connection_permissions SET low_atlas_shared = ${data.allowed}, updated_at = now() WHERE connection_id = ${connection.id}::uuid`;
-    if (data.permission === 'ATLAS' && !mineIsLow) await sql`UPDATE connection_permissions SET high_atlas_shared = ${data.allowed}, updated_at = now() WHERE connection_id = ${connection.id}::uuid`;
     if (data.permission === 'EXTERNAL_SHARE' && mineIsLow) await sql`UPDATE connection_permissions SET low_external_share_allowed = ${data.allowed}, updated_at = now() WHERE connection_id = ${connection.id}::uuid`;
     if (data.permission === 'EXTERNAL_SHARE' && !mineIsLow) await sql`UPDATE connection_permissions SET high_external_share_allowed = ${data.allowed}, updated_at = now() WHERE connection_id = ${connection.id}::uuid`;
-    if (data.allowed && data.permission === 'COMPARE') await activity(connection.otherProfileId, me.id, connection.id, 'COMPARISON_REQUESTED');
-    if (data.allowed && data.permission === 'ATLAS') await activity(connection.otherProfileId, me.id, connection.id, 'ATLAS_SHARED');
     return { allowed: data.allowed };
   });
 
@@ -425,10 +423,13 @@ async function fullTrail(profileId: string) {
   const { sql } = await import('@/db');
   const chapters = await sql<Array<{
     chapterId: string; position: number; arrivalYear: number | null; endYear: number | null; reason: string;
+      title: string | null; memory: string | null;
       cityId: number; city: string; region: string | null; country: string; countryCode: string; latitude: number; longitude: number;
   }>>`
     SELECT chapter.id::text AS "chapterId", chapter.position, chapter.arrival_year AS "arrivalYear",
       COALESCE(chapter.end_year, LEAD(chapter.arrival_year) OVER (ORDER BY chapter.position)) AS "endYear", chapter.reason,
+      CASE WHEN chapter.privacy_override = 'PRIVATE' THEN NULL ELSE chapter.title END AS title,
+      CASE WHEN chapter.privacy_override = 'PRIVATE' THEN NULL ELSE chapter.memory_body END AS memory,
       city.id AS "cityId", city.name AS city, state.name AS region, country.name AS country, country.code AS "countryCode", city.latitude, city.longitude
     FROM life_trails trail
     JOIN life_chapters chapter ON chapter.trail_id = trail.id
@@ -438,10 +439,26 @@ async function fullTrail(profileId: string) {
     ORDER BY chapter.position
   `;
   if (!chapters.length) return [];
+  const chapterIds = chapters.map((chapter) => chapter.chapterId);
+  const media = await sql<Array<{ id: string; chapterId: string; mimeType: string; width: number | null; height: number | null; displayOrder: number; caption: string | null }>>`
+    SELECT media.id::text AS id, media.life_chapter_id::text AS "chapterId", media.mime_type AS "mimeType",
+      media.width, media.height, media.display_order AS "displayOrder", media.caption
+    FROM chapter_media media
+    JOIN life_chapters chapter ON chapter.id = media.life_chapter_id
+    WHERE media.life_chapter_id = ANY(${chapterIds}::uuid[])
+      AND COALESCE(media.privacy_override, 'FRIENDS'::story_visibility) <> 'PRIVATE'
+      AND COALESCE(chapter.privacy_override, 'FRIENDS'::story_visibility) <> 'PRIVATE'
+    ORDER BY media.life_chapter_id, media.display_order, media.created_at
+  `;
+  const mediaByChapter = new Map<string, Array<(typeof media)[number]>>();
+  media.forEach((item) => mediaByChapter.set(item.chapterId, [...(mediaByChapter.get(item.chapterId) ?? []), item]));
   return chapters.map((chapter) => ({
       id: String(chapter.cityId), chapterId: chapter.chapterId, city: chapter.city, region: chapter.region, country: chapter.country, countryCode: chapter.countryCode,
       latitude: chapter.latitude, longitude: chapter.longitude, arrivalYear: chapter.arrivalYear ?? undefined, endYear: chapter.endYear ?? undefined,
       reason: chapter.reason as 'Career' | 'Study' | 'Family' | 'Love' | 'Adventure' | 'Opportunity' | 'A new start' | 'Other',
+      ...(chapter.title ? { title: chapter.title } : {}),
+      ...(chapter.memory ? { memory: chapter.memory } : {}),
+      photos: (mediaByChapter.get(chapter.chapterId) ?? []).map((photo) => ({ ...photo, url: `/api/media/${photo.id}` })),
     }));
 }
 
@@ -459,7 +476,7 @@ export const getFriendAtlas = createServerFn({ method: 'GET' })
       LIMIT 1
     `;
     if (!trail) throw new Error(`@${connection.otherHandle} has not saved a Life Atlas yet.`);
-    if (trail.visibility === 'PRIVATE') throw new Error(`@${connection.otherHandle} is keeping their Atlas private.`);
+    if (trail.visibility !== 'FRIENDS' && trail.visibility !== 'PUBLIC') throw new Error(`@${connection.otherHandle} is keeping their Atlas private.`);
     const stops = await fullTrail(connection.otherProfileId);
     return {
       profile: minimalProfile({ displayName: connection.otherDisplayName, handle: connection.otherHandle, image: connection.otherImage }),
@@ -485,16 +502,14 @@ export const getOurPaths = createServerFn({ method: 'GET' })
       ORDER BY friend.handle_normalized
     `;
     const requesterIsLow = connection.lowProfileId === me.id;
-    const access = pairAccess({ requesterIsLow, ...connection });
+    const access = pairAccess({ requesterIsLow, ...connection, requesterFriendsSharing: connection.myFriendsSharing, otherFriendsSharing: connection.otherFriendsSharing });
     const base = {
       me: { displayName: me.displayName || me.handle!, handle: me.handle! },
       other: minimalProfile({ displayName: connection.otherDisplayName, handle: connection.otherHandle, image: connection.otherImage }),
       friendOptions: friendOptions.map((friend) => ({ displayName: friend.displayName || friend.handle, handle: friend.handle })),
       permissions: {
-        compareMine: requesterIsLow ? connection.lowCompareAllowed : connection.highCompareAllowed,
-        compareTheirs: requesterIsLow ? connection.highCompareAllowed : connection.lowCompareAllowed,
-        atlasMine: requesterIsLow ? connection.lowAtlasShared : connection.highAtlasShared,
-        atlasTheirs: requesterIsLow ? connection.highAtlasShared : connection.lowAtlasShared,
+        friendsSharingMine: connection.myFriendsSharing,
+        friendsSharingTheirs: connection.otherFriendsSharing,
         externalMine: requesterIsLow ? connection.lowExternalShareAllowed : connection.highExternalShareAllowed,
         externalTheirs: requesterIsLow ? connection.highExternalShareAllowed : connection.lowExternalShareAllowed,
         compareAllowed: access.compareAllowed,
@@ -510,12 +525,12 @@ export const getOurPaths = createServerFn({ method: 'GET' })
       discoveries: ReturnType<typeof deriveSharedDiscoveries>;
       trail: Awaited<ReturnType<typeof fullTrail>> | null;
     } = null;
-    let additionalMineTrail: Awaited<ReturnType<typeof fullTrail>> | null = null;
+    const mineTrail = await fullTrail(me.id);
     if (data.additionalHandle && normalizeHandle(data.additionalHandle).normalized !== normalizeHandle(data.handle).normalized) {
       const extraConnection = await connectionWithHandle(me.id, data.additionalHandle);
       if (extraConnection?.status === 'ACCEPTED') {
         const extraRequesterIsLow = extraConnection.lowProfileId === me.id;
-        const extraAccess = pairAccess({ requesterIsLow: extraRequesterIsLow, ...extraConnection });
+        const extraAccess = pairAccess({ requesterIsLow: extraRequesterIsLow, ...extraConnection, requesterFriendsSharing: extraConnection.myFriendsSharing, otherFriendsSharing: extraConnection.otherFriendsSharing });
         let extraDiscoveries: ReturnType<typeof deriveSharedDiscoveries> = [];
         let extraTrail: Awaited<ReturnType<typeof fullTrail>> | null = null;
         if (extraAccess.compareAllowed) {
@@ -525,12 +540,7 @@ export const getOurPaths = createServerFn({ method: 'GET' })
           ]);
           extraDiscoveries = deriveSharedDiscoveries(mineChapters, extraChapters);
         }
-        if (extraAccess.fullComparisonAllowed) {
-          [additionalMineTrail, extraTrail] = await Promise.all([
-            fullTrail(me.id),
-            fullTrail(extraConnection.otherProfileId),
-          ]);
-        }
+        if (extraAccess.fullComparisonAllowed) extraTrail = await fullTrail(extraConnection.otherProfileId);
         additional = {
           profile: minimalProfile({ displayName: extraConnection.otherDisplayName, handle: extraConnection.otherHandle, image: extraConnection.otherImage }),
           permissions: {
@@ -543,7 +553,7 @@ export const getOurPaths = createServerFn({ method: 'GET' })
         };
       }
     }
-    if (!access.compareAllowed) return { ...base, discoveries: [], mineTrail: additionalMineTrail, theirTrail: theirSharedTrail, additional, moments: [] };
+    if (!access.compareAllowed) return { ...base, discoveries: [], mineTrail, theirTrail: theirSharedTrail, additional, moments: [] };
     const [mineChapters, theirChapters] = await Promise.all([comparisonChapters(me.id), comparisonChapters(connection.otherProfileId)]);
     const discoveries = deriveSharedDiscoveries(mineChapters, theirChapters);
     const moments = await sql<Array<{ id: string; city: string; yearFrom: number | null; yearTo: number | null; title: string | null; memory: string | null; status: 'PENDING' | 'CONFIRMED' | 'DECLINED'; mineVisible: boolean; theirVisible: boolean }>>`
@@ -552,8 +562,7 @@ export const getOurPaths = createServerFn({ method: 'GET' })
         CASE WHEN ${requesterIsLow} THEN moment.high_profile_visible ELSE moment.low_profile_visible END AS "theirVisible"
       FROM shared_moments moment WHERE moment.connection_id = ${connection.id}::uuid AND moment.status <> 'DECLINED' ORDER BY moment.year_from, moment.created_at
     `;
-    const [mineTrail, theirTrail] = access.fullComparisonAllowed ? await Promise.all([fullTrail(me.id), Promise.resolve(theirSharedTrail ?? await fullTrail(connection.otherProfileId))]) : [additionalMineTrail, theirSharedTrail];
-    return { ...base, discoveries, mineTrail, theirTrail, additional, moments };
+    return { ...base, discoveries, mineTrail, theirTrail: theirSharedTrail, additional, moments };
   });
 
 // Share payloads are minted independently from the on-screen comparison. This
@@ -566,7 +575,7 @@ export const getOurPathsShareData = createServerFn({ method: 'POST' })
     const connection = await connectionWithHandle(me.id, data.handle);
     if (!connection || connection.status !== 'ACCEPTED') throw new Error('Our Paths sharing is available only between connected people.');
     const requesterIsLow = connection.lowProfileId === me.id;
-    const access = pairAccess({ requesterIsLow, ...connection });
+    const access = pairAccess({ requesterIsLow, ...connection, requesterFriendsSharing: connection.myFriendsSharing, otherFriendsSharing: connection.otherFriendsSharing });
     if (!access.externalShareAllowed) throw new Error('Both people must allow external sharing before an Our Paths card can be created.');
     const [mineChapters, theirChapters] = await Promise.all([comparisonChapters(me.id), comparisonChapters(connection.otherProfileId)]);
     const discoveries = deriveSharedDiscoveries(mineChapters, theirChapters);
@@ -782,7 +791,7 @@ export const proposeSharedMoment = createServerFn({ method: 'POST' })
     const me = await requireSocialProfile();
     const connection = await connectionWithHandle(me.id, data.handle);
     if (!connection || connection.status !== 'ACCEPTED') throw new Error('Only connected people can confirm a shared moment.');
-    const access = pairAccess({ requesterIsLow: connection.lowProfileId === me.id, ...connection });
+    const access = pairAccess({ requesterIsLow: connection.lowProfileId === me.id, ...connection, requesterFriendsSharing: connection.myFriendsSharing, otherFriendsSharing: connection.otherFriendsSharing });
     if (!access.compareAllowed) throw new Error('Both people must allow Our Paths before confirming a shared moment.');
     const [mine, theirs] = await Promise.all([comparisonChapters(me.id), comparisonChapters(connection.otherProfileId)]);
     const discovery = deriveSharedDiscoveries(mine, theirs).find((item) => item.city.toLowerCase() === data.city.toLowerCase() && item.overlapFrom === data.yearFrom && item.overlapTo === data.yearTo);

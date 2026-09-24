@@ -368,3 +368,88 @@ footer { display: flex; justify-content: space-between; gap: 20px; border-top: 1
 @media (prefers-reduced-motion: reduce) {
   .shared-place-row, .social-map-loading > div { animation: none; transition: none; }
 }
+
+/* Premium Life Atlas system — editorial warmth with map-first utility. */
+.social-profile-mark {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid color-mix(in oklab, var(--primary) 28%, var(--border));
+  border-radius: 16px 16px 16px 5px;
+  background: linear-gradient(145deg, color-mix(in oklab, var(--primary) 18%, var(--card)), color-mix(in oklab, var(--secondary) 12%, var(--card)));
+  box-shadow: 0 14px 32px color-mix(in oklab, var(--foreground) 12%, transparent);
+  filter: none;
+}
+.social-profile-mark img { width: 100%; height: 100%; object-fit: cover; }
+.social-profile-mark strong { color: var(--foreground); font-family: var(--font-editorial); font-size: 1.25rem; font-weight: 500; letter-spacing: -.04em; }
+.social-profile-mark > span { position: absolute; right: 7px; bottom: 7px; width: 9px; height: 9px; border: 2px solid var(--card); border-radius: 2px; background: var(--primary); box-shadow: -14px -14px 0 color-mix(in oklab, var(--secondary) 72%, transparent); transform: rotate(45deg); }
+.circle-person-identity .social-profile-mark { width: 58px; height: 65px; }
+.friend-private-note { grid-column: 1/-1; display: inline-flex; align-items: center; gap: 7px; color: var(--muted-foreground); font-size: .62rem; }
+.friend-private-note svg { width: 13px; }
+
+.life-circle-page .circle-hero { min-height: 300px; padding-block: 42px 30px; }
+.life-circle-page .circle-hero h1 { font-size: clamp(3.3rem, 6.3vw, 5.9rem); }
+.life-circle-page .people-search-panel { margin-bottom: 42px; }
+.life-circle-page .circle-section { padding-block: 56px; }
+.life-circle-page .friend-card { grid-template-columns: 1fr auto auto; }
+.life-circle-page .friend-card .circle-action { grid-column: auto; justify-self: end; }
+.life-circle-page .friend-safety { grid-column: 1/-1; }
+
+.paths-private-note { display: grid; max-width: 1180px; grid-template-columns: auto 1fr; align-items: center; gap: 24px; margin: 8px auto 22px; border: 1px solid color-mix(in oklab, var(--primary) 20%, var(--border)); border-radius: 16px; background: color-mix(in oklab, var(--card) 72%, transparent); padding: 20px 24px; }
+.paths-private-note .locked-globe { margin: 0; }
+.paths-private-note .locked-globe > span { border-width: 5px; }
+.paths-private-note h2 { margin: 3px 0 4px; font-family: var(--font-editorial); font-size: 1.5rem; font-weight: 500; }
+.paths-private-note p:last-child { margin: 0; color: var(--muted-foreground); font-size: .68rem; line-height: 1.55; }
+.our-paths-page .paths-permission-panel { display: grid; max-width: 920px; grid-template-columns: minmax(0,1fr) minmax(330px,.7fr); align-items: center; gap: 28px; padding-block: 28px 80px; }
+.our-paths-page .paths-permission-panel > div { margin: 0; }
+.our-paths-page .permission-row { border: 1px solid #d4d8d7; border-radius: 12px; }
+.our-paths-page .permission-row:first-of-type, .our-paths-page .permission-row:last-of-type { border-radius: 12px; }
+.friend-atlas-copy h3 { margin: 7px 0 0; font-family: var(--font-editorial); font-size: 1.05rem; font-weight: 500; }
+.friend-atlas-copy p { max-width: 600px; margin: 5px 0 0; color: var(--muted-foreground); font-family: var(--font-editorial); font-size: .78rem; line-height: 1.55; }
+.friend-atlas-photos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-top: 12px; }
+.friend-atlas-photos button { overflow: hidden; aspect-ratio: 1.28; border: 0; border-radius: 9px; background: var(--parchment); padding: 0; }
+.friend-atlas-photos img { width: 100%; height: 100%; object-fit: cover; transition: transform .35s ease; }
+.friend-atlas-photos button:hover img { transform: scale(1.04); }
+.atlas-photo-lightbox { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; border: 0; background: rgba(20,18,16,.88); padding: 30px; }
+.atlas-photo-lightbox img { max-width: min(1100px, 94vw); max-height: 84vh; border-radius: 12px; box-shadow: 0 30px 100px rgba(0,0,0,.45); }
+.atlas-photo-lightbox span { position: fixed; right: 24px; top: 24px; border: 1px solid rgba(255,255,255,.34); border-radius: 999px; color: white; padding: 8px 13px; font-size: .65rem; }
+
+.privacy-transition { display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid color-mix(in oklab, var(--primary) 30%, var(--border)); border-radius: 12px; background: color-mix(in oklab, var(--primary) 6%, var(--card)); padding: 15px; }
+.privacy-transition > div { display: flex; align-items: flex-start; gap: 10px; }
+.privacy-transition svg { flex: none; width: 17px; color: var(--primary); }
+.privacy-transition span { display: grid; gap: 4px; }
+.privacy-transition strong { font-size: .72rem; }
+.privacy-transition small { max-width: 570px; color: var(--muted-foreground); font-size: .61rem; line-height: 1.5; }
+
+.story-connected .trail-place { border-radius: 14px; transition: background .25s ease, box-shadow .25s ease, transform .25s ease; }
+.story-connected .trail-place.is-active { background: color-mix(in oklab, var(--primary) 5%, var(--card)); box-shadow: inset 3px 0 var(--primary), 0 18px 50px color-mix(in oklab, var(--foreground) 7%, transparent); transform: translateX(4px); }
+.trail-photo-grid { grid-auto-rows: 170px; }
+.trail-photo-grid img { transition: transform .35s ease; }
+.trail-photo-grid img:hover { transform: scale(1.025); }
+
+.life-mobile-nav { display: none; }
+
+@media (max-width: 680px) {
+  body { padding-bottom: 70px; }
+  .life-mobile-nav { position: fixed; z-index: 80; right: 12px; bottom: max(10px, env(safe-area-inset-bottom)); left: 12px; display: grid; grid-template-columns: repeat(3, 1fr); overflow: hidden; border: 1px solid color-mix(in oklab, var(--primary) 20%, var(--border)); border-radius: 17px; background: color-mix(in oklab, var(--card) 88%, transparent); padding: 5px; box-shadow: 0 20px 50px rgba(35,29,24,.22); backdrop-filter: blur(22px); }
+  .life-mobile-nav a { display: grid; min-height: 49px; place-items: center; gap: 1px; border-radius: 12px; color: var(--muted-foreground); font-size: .57rem; text-decoration: none; }
+  .life-mobile-nav a.active { background: color-mix(in oklab, var(--primary) 10%, var(--card)); color: var(--primary); }
+  .life-mobile-nav svg { width: 17px; height: 17px; }
+  .global-header .global-nav { display: none; }
+  .global-header .header-google, .global-header .profile-link, .global-header .username-needed { min-height: 44px; }
+  .mapboxgl-ctrl-group button { width: 44px !important; height: 44px !important; }
+  .social-map-recenter { min-height: 44px; }
+  .our-paths-page .replay-panel button, .our-paths-page .paths-year-heading button { width: 44px; height: 44px; }
+  .circle-header > div a { display: none; }
+  .life-circle-page .circle-hero { min-height: 220px; }
+  .life-circle-page .friend-card { grid-template-columns: 1fr; }
+  .life-circle-page .friend-card .circle-action { width: 100%; justify-self: stretch; }
+  .paths-private-note { grid-template-columns: 1fr; margin-inline: 18px; }
+  .our-paths-page .paths-permission-panel { grid-template-columns: 1fr; padding-inline: 18px; }
+  .friend-atlas-photos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .privacy-transition { align-items: stretch; flex-direction: column; }
+  .privacy-transition .primary-button { width: 100%; }
+  .story-connected .trail-place.is-active { transform: none; }
+  .trail-photo-grid { grid-auto-rows: 130px; }
+}

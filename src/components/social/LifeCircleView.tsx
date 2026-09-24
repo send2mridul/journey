@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { LifeAtlasMobileNav } from "@/components/LifeAtlasMobileNav";
 import { ProfileMark } from "./SocialVisuals";
 
 export type CirclePerson = {
@@ -23,8 +24,7 @@ export type CircleRelationship = {
   requestId: string;
   profile: CirclePerson;
   incoming: boolean;
-  compare: { mine: boolean; theirs: boolean };
-  atlas: { mine: boolean; theirs: boolean };
+  atlasAvailable: boolean;
 };
 
 export type CircleData = {
@@ -66,7 +66,7 @@ export type CircleData = {
 function PersonIdentity({ person }: { person: CirclePerson }) {
   return (
     <div className="circle-person-identity">
-      <ProfileMark handle={person.handle} />
+      <ProfileMark handle={person.handle} displayName={person.displayName} avatarUrl={person.avatarUrl} size={58} />
       <div>
         <strong>{person.displayName}</strong>
         <span>@{person.handle}</span>
@@ -94,7 +94,7 @@ export function IncomingRequestCard({
       <div className="request-copy">
         <p className="eyebrow">Connection request</p>
         <h3>{relationship.profile.displayName} wants to connect.</h3>
-        <p>Connecting does not reveal either private Atlas.</p>
+        <p>Accepted friends can open any Atlas shared with friends. Private chapters stay private.</p>
       </div>
       <div className="request-actions">
         <button
@@ -130,12 +130,7 @@ function FriendCard({
   relationship: CircleRelationship;
   onChange: (handle: string, action: "REMOVE" | "BLOCK") => void;
 }) {
-  const pathState =
-    relationship.compare.mine && relationship.compare.theirs
-      ? "Comparison ready"
-      : relationship.compare.mine
-        ? "Comparison requested"
-        : "Connected · Atlas private";
+  const pathState = relationship.atlasAvailable ? "Friends-only Atlas available" : "Atlas is private";
   return (
     <article className="friend-card">
       <PersonIdentity person={relationship.profile} />
@@ -143,13 +138,13 @@ function FriendCard({
         <Shield />
         <span>{pathState}</span>
       </div>
-      <Link
-        to="/atlas/friend/$handle"
-        params={{ handle: relationship.profile.handle }}
-        className="circle-action"
-      >
-        View Atlas <ArrowRight />
-      </Link>
+      {relationship.atlasAvailable ? <Link
+          to="/atlas/friend/$handle"
+          params={{ handle: relationship.profile.handle }}
+          className="circle-action"
+        >
+          View Atlas <ArrowRight />
+        </Link> : <span className="friend-private-note"><Shield /> Private until they choose Friends-only</span>}
       <Link
         to="/paths/$handle"
         params={{ handle: relationship.profile.handle }}
@@ -196,6 +191,7 @@ export function LifeCircleView({
     data.incoming.length + data.chapterRequests.length + data.momentRequests.length;
   return (
     <main className="life-circle-page">
+      <LifeAtlasMobileNav active="circle" />
       <header className="circle-header">
         <Link to="/" className="circle-brand">
           Life Atlas
@@ -209,15 +205,15 @@ export function LifeCircleView({
       <section className="circle-hero">
         <div>
           <p className="eyebrow">Life Circle</p>
-          <h1>People in your life.</h1>
-          <p>Connections, shared chapters, and private path comparisons in one place.</p>
+          <h1>Your people, one place.</h1>
+          <p>Find friends, respond to requests, and open the routes they share with their circle.</p>
         </div>
-        <ProfileMark handle={data.profile.handle} size={104} />
+        <ProfileMark handle={data.profile.handle} displayName={data.profile.displayName || data.profile.handle} size={72} />
       </section>
 
       <section id="circle-find" className="people-search-panel">
         <div className="circle-section-title">
-          <div><p className="eyebrow">Find a friend</p><h2>Add by exact @username</h2></div>
+          <div><p className="eyebrow">Find a friend</p><h2>Search by @username</h2></div>
           <UserPlus />
         </div>
         <div className="handle-friend-search">
@@ -268,23 +264,10 @@ export function LifeCircleView({
         </small>
       </section>
 
-      <nav className="circle-section-nav" aria-label="Life Circle sections">
-        <a href="#circle-find">
-          <span>Find Friends</span>
-          <strong><Search /></strong>
-        </a>
-        <a href="#circle-friends">
-          <span>My Friends</span>
-          <strong>{data.friends.length}</strong>
-        </a>
-        <a href="#circle-requests">
-          <span>Friend Requests</span>
-          <strong>{requestCount}</strong>
-        </a>
-        <a href="#circle-blocked">
-          <span>Blocked Accounts</span>
-          <strong>{data.blocked.length}</strong>
-        </a>
+      <nav className="circle-section-nav" aria-label="Life Circle summary">
+        <a href="#circle-friends"><span>Friends</span><strong>{data.friends.length}</strong></a>
+        <a href="#circle-requests"><span>Requests</span><strong>{requestCount}</strong></a>
+        <a href="#circle-blocked"><span>Blocked</span><strong>{data.blocked.length}</strong></a>
       </nav>
 
       {data.incoming.length > 0 ? (

@@ -52,7 +52,7 @@ function OurPathsRoute() {
       window.clearInterval(timer);
     };
   }, [load]);
-  async function permission(kind: "COMPARE" | "ATLAS" | "EXTERNAL_SHARE", allowed: boolean) {
+  async function permission(kind: "EXTERNAL_SHARE", allowed: boolean) {
     try {
       await updatePermission({ data: { handle, permission: kind, allowed } });
       setMessage(allowed ? "Permission updated." : "Permission revoked immediately.");

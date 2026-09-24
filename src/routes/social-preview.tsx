@@ -54,8 +54,7 @@ const circleData: CircleData = {
         mutualConnections: 2,
         requestStatus: "INCOMING",
       },
-      compare: { mine: false, theirs: false },
-      atlas: { mine: false, theirs: false },
+      atlasAvailable: false,
     },
   ],
   outgoing: [],
@@ -79,8 +78,7 @@ const circleData: CircleData = {
         mutualConnections: 1,
         requestStatus: "CONNECTED",
       },
-      compare: { mine: true, theirs: true },
-      atlas: { mine: true, theirs: true },
+      atlasAvailable: true,
     },
     {
       requestId: "00000000-0000-4000-8000-000000000003",
@@ -92,8 +90,7 @@ const circleData: CircleData = {
         mutualConnections: 2,
         requestStatus: "CONNECTED",
       },
-      compare: { mine: false, theirs: false },
-      atlas: { mine: false, theirs: false },
+      atlasAvailable: false,
     },
   ],
   suggestions: [
@@ -242,10 +239,8 @@ function pathsData(view: PreviewView): OurPathsData {
       requestStatus: "CONNECTED",
     },
     permissions: {
-      compareMine: true,
-      compareTheirs: true,
-      atlasMine: full,
-      atlasTheirs: full,
+      friendsSharingMine: true,
+      friendsSharingTheirs: true,
       externalMine: false,
       externalTheirs: false,
       compareAllowed: true,
@@ -254,7 +249,8 @@ function pathsData(view: PreviewView): OurPathsData {
       externalShareAllowed: false,
     },
     discoveries,
-    mineTrail: full ? mineTrail : null,
+    friendOptions: [{ displayName: "Priya Shah", handle: "priya" }],
+    mineTrail,
     theirTrail: full ? theirTrail : null,
     moments: sharedMoment
       ? [

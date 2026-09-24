@@ -45,6 +45,7 @@ import { MovementFingerprint } from '@/components/MovementFingerprint';
 import { SharePreviewDialog } from '@/components/SharePreviewDialog';
 import { ChapterPeoplePanel, type ChapterPerson } from '@/components/social/ChapterPeoplePanel';
 import { ChapterAtlasFallback } from '@/components/social/SocialVisuals';
+import { LifeAtlasMobileNav } from '@/components/LifeAtlasMobileNav';
 import { addChapterPerson, getChapterFriendOptions, getChapterPeople, getSocialSession } from '@/server/social';
 
 const AtlasMap = lazy(() => import('@/components/AtlasMap'));
@@ -201,7 +202,7 @@ function Index() {
       current = false;
       if (loadedOwnerRef.current === loadKey) loadedOwnerRef.current = null;
     };
-  }, [accountSession?.user?.id, claimGuestDraft, draftId, draftReady, loadMyLatestTrail, sessionPending]);
+  }, [accountSession?.user, claimGuestDraft, draftId, draftReady, loadMyLatestTrail, sessionPending]);
 
   useEffect(() => {
     if (!hydrated || !draftId || trail.length < 2 || !revealed) return;
@@ -377,6 +378,7 @@ function Index() {
   }
 
   return <main className="min-h-screen bg-background text-foreground">
+    <LifeAtlasMobileNav active="atlas" />
     <header className="global-header fixed inset-x-0 top-0 z-50 border-b border-border/50 bg-background/75 backdrop-blur-2xl">
       <div className="mx-auto flex h-16 max-w-[1480px] items-center justify-between gap-3 px-5 md:px-10">
         <a href="#top" className="flex items-center gap-2 font-semibold"><span className="brand-mark"><Globe2 className="size-4" /></span>Life Atlas</a>
@@ -628,7 +630,7 @@ function MemoryEditor({ stop, index, total, section, onClose, onSave, onPhotosCh
     <label><span>Short title · optional</span><input value={title} maxLength={120} placeholder="The city where my career really started" onChange={(event) => setTitle(event.target.value)} /></label>
     <label ref={memoryRef} className="chapter-editor-target"><span>Your memory · optional</span><textarea value={memory} maxLength={5000} rows={5} placeholder={`What do you remember about your first days in ${stop.city}?`} onChange={(event) => setMemory(event.target.value)} /></label>
     <div className="memory-meta"><AtlasSelect label="Chapter privacy" value={privacy} options={[{ value: 'INHERIT', label: 'Same as Life Atlas' }, { value: 'PRIVATE', label: 'Private' }]} onChange={(value) => setPrivacy(value as StoryVisibility | 'INHERIT')} /></div>
-    <div ref={photosRef} className="photo-heading chapter-editor-target"><div><strong>Photographs</strong><small>Up to five private chapter photos.</small></div>{mediaState === 'signin' && <span>Google sign-in required</span>}{mediaState === 'storage' && <span>Private storage not connected</span>}</div>
+    <div ref={photosRef} className="photo-heading chapter-editor-target"><div><strong>Photographs</strong><small>Up to five photos. Friends can see them only when this chapter inherits a Friends-only Atlas.</small></div>{mediaState === 'signin' && <span>Google sign-in required</span>}{mediaState === 'storage' && <span>Private storage not connected</span>}</div>
     <div className="memory-photos">
       {stop.photos?.map((photo) => <figure key={photo.id}><img src={photo.url} alt={photo.caption || `Memory from ${stop.city}`} loading="lazy" /><button aria-label="Remove photo" onClick={() => void deletePhoto(photo.id)}><Trash2 /></button></figure>)}
       {(stop.photos?.length ?? 0) < 5 && <label className={`photo-picker ${mediaState !== 'ready' ? 'is-disabled' : ''}`}><ImagePlus /><span>{uploading ? `Uploading ${uploadProgress ?? 0}%` : mediaState === 'signin' ? 'Sign in to add photos' : mediaState === 'storage' ? 'Photos unavailable' : 'Add photo'}</span><input type="file" accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif,.heic,.heif" disabled={uploading || mediaState !== 'ready'} onChange={(event) => { const file = event.target.files?.[0]; if (file) void addPhoto(file); event.target.value = ''; }} /></label>}
@@ -681,7 +683,8 @@ function SaveTrailPanel({ trail, ownershipMode, persistence, visibility, googleA
         <button className={visibility === 'FRIENDS' ? 'active' : ''} onClick={() => onVisibility('FRIENDS')}><Shield /><span><strong>Friends-only</strong><small>Mutually accepted friends</small></span></button>
         <button className={visibility === 'PRIVATE' ? 'active' : ''} onClick={() => onVisibility('PRIVATE')}><LockKeyhole /><span><strong>Private</strong><small>Only you</small></span></button>
       </div>}
-      {session?.user && visibility !== 'PRIVATE' && <p className="privacy-reminder">Friends see your route and chapter details, but private memories and photographs remain private.</p>}
+      {session?.user && visibility === 'PRIVATE' && <div className="privacy-transition"><div><Shield /><span><strong>Your existing Atlas is still private.</strong><small>Nothing changed automatically. Choose Friends-only when you are ready to share your route, chapter stories and non-private photographs with accepted friends.</small></span></div><button className="primary-button compact" onClick={() => onVisibility('FRIENDS')}>Share with friends</button></div>}
+      {session?.user && visibility !== 'PRIVATE' && <p className="privacy-reminder">Accepted friends can see your route, chapter details and photos. Mark an individual chapter Private to keep its story and photographs only for you.</p>}
       <div className="share-artifacts"><button className="outline-button" onClick={() => setSharePreviewOpen(true)}><Share2 />Create an Atlas Card</button><button className="outline-button" onClick={onReplay}><Play />Replay my life</button></div>
     </div>
     {isPending ? <LoaderCircle className="search-spinner" /> : session?.user ? <div className="save-account"><span><Check />Saved to your Google account</span><button className="auth-button" onClick={() => void authClient.signOut()}><LogOut />Sign out</button></div> : <div className="google-only-auth">

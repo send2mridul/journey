@@ -10,6 +10,8 @@ const acceptedPair = {
   highAtlasShared: false,
   lowExternalShareAllowed: false,
   highExternalShareAllowed: false,
+  requesterFriendsSharing: false,
+  otherFriendsSharing: false,
 };
 
 describe('Life Atlas handles', () => {
@@ -47,8 +49,8 @@ describe('minimal social payloads', () => {
   });
 });
 
-describe('mutual consent', () => {
-  test('a friendship reveals no comparison or full Atlas by itself', () => {
+describe('friends-only sharing', () => {
+  test('an existing private Atlas remains private after friendship', () => {
     expect(pairAccess(acceptedPair)).toEqual({
       connected: true,
       compareAllowed: false,
@@ -58,20 +60,19 @@ describe('mutual consent', () => {
     });
   });
 
-  test('comparison requires both people and still does not reveal full trails', () => {
-    const access = pairAccess({ ...acceptedPair, lowCompareAllowed: true, highCompareAllowed: true });
+  test('a friend can see a Friends-only Atlas without a second pair permission', () => {
+    const access = pairAccess({ ...acceptedPair, otherFriendsSharing: true });
     expect(access.compareAllowed).toBe(true);
-    expect(access.fullComparisonAllowed).toBe(false);
-    expect(access.canViewOtherFullAtlas).toBe(false);
+    expect(access.fullComparisonAllowed).toBe(true);
+    expect(access.canViewOtherFullAtlas).toBe(true);
+    expect(access.externalShareAllowed).toBe(false);
   });
 
-  test('full comparison and external sharing are separately mutual', () => {
+  test('external redistribution remains separately mutual', () => {
     const access = pairAccess({
       ...acceptedPair,
-      lowCompareAllowed: true,
-      highCompareAllowed: true,
-      lowAtlasShared: true,
-      highAtlasShared: true,
+      requesterFriendsSharing: true,
+      otherFriendsSharing: true,
       lowExternalShareAllowed: true,
       highExternalShareAllowed: true,
     });
@@ -84,10 +85,8 @@ describe('mutual consent', () => {
     const access = pairAccess({
       ...acceptedPair,
       status: 'BLOCKED',
-      lowCompareAllowed: true,
-      highCompareAllowed: true,
-      lowAtlasShared: true,
-      highAtlasShared: true,
+      requesterFriendsSharing: true,
+      otherFriendsSharing: true,
       lowExternalShareAllowed: true,
       highExternalShareAllowed: true,
     });
@@ -98,6 +97,15 @@ describe('mutual consent', () => {
       fullComparisonAllowed: false,
       externalShareAllowed: false,
     });
+  });
+
+  test('multi-friend routes are authorized independently per friendship', () => {
+    const friendsOnlyFriend = pairAccess({ ...acceptedPair, otherFriendsSharing: true });
+    const privateFriend = pairAccess({ ...acceptedPair, otherFriendsSharing: false });
+    const blockedFriend = pairAccess({ ...acceptedPair, status: 'BLOCKED', otherFriendsSharing: true });
+    expect(friendsOnlyFriend.canViewOtherFullAtlas).toBe(true);
+    expect(privateFriend.canViewOtherFullAtlas).toBe(false);
+    expect(blockedFriend.canViewOtherFullAtlas).toBe(false);
   });
 });
 

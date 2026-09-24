@@ -204,7 +204,7 @@ const saveTrailInput = z.object({
   clientDraftId: z.string().uuid(),
   title: z.string().trim().min(1).max(120).default('My Life Trail'),
   publicTitle: z.string().trim().max(120).optional(),
-  visibility: storyVisibility.default('PRIVATE'),
+  visibility: storyVisibility.default('FRIENDS'),
   stops: z.array(stopInput).min(2).max(50),
 }).superRefine((value, context) => {
   value.stops.slice(1).forEach((stop, index) => {

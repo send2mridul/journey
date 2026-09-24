@@ -17,8 +17,20 @@ type MapFrame = { x: number; y: number; width: number; height: number };
 type LabelBox = { x: number; y: number; width: number; height: number };
 
 const cachedCards = new Map<string, string>();
-const MAP_MIN_LATITUDE = -58;
-const MAP_MAX_LATITUDE = 82;
+const MAP_MIN_LATITUDE = -90;
+const MAP_MAX_LATITUDE = 90;
+let worldLandImagePromise: Promise<HTMLImageElement | null> | null = null;
+
+function loadWorldLandImage() {
+  if (worldLandImagePromise) return worldLandImagePromise;
+  worldLandImagePromise = new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = '/world-land-110m.svg';
+  });
+  return worldLandImagePromise;
+}
 
 // Deliberately simplified continental silhouettes: geographic context, not a road map.
 const WORLD_LAND: Array<Array<[number, number]>> = [
@@ -167,6 +179,7 @@ function mapPoint(frame: MapFrame, longitude: number, latitude: number) {
   };
 }
 
+
 function boxesOverlap(a: LabelBox, b: LabelBox) {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
@@ -176,7 +189,7 @@ function routeLabelIndices(length: number) {
   return [...new Set([0, Math.round((length - 1) / 3), Math.round((length - 1) * 2 / 3), length - 1])];
 }
 
-function drawGeographicTrail(context: CanvasRenderingContext2D, trail: TrailStop[], frame: MapFrame, options: { sans: string; compact?: boolean }) {
+function drawGeographicTrail(context: CanvasRenderingContext2D, trail: TrailStop[], frame: MapFrame, options: { sans: string; compact?: boolean; worldLand?: HTMLImageElement | null }) {
   const radius = options.compact ? 24 : 30;
   context.save();
   context.shadowColor = 'rgba(81,43,26,.15)';
@@ -208,16 +221,22 @@ function drawGeographicTrail(context: CanvasRenderingContext2D, trail: TrailStop
   }
   context.setLineDash([]);
 
-  context.fillStyle = 'rgba(160,116,78,.2)';
-  context.strokeStyle = 'rgba(132,88,58,.22)';
-  context.lineWidth = options.compact ? 1 : 1.4;
-  for (const polygon of WORLD_LAND) {
-    context.beginPath();
-    polygon.forEach(([longitude, latitude], index) => {
-      const point = mapPoint(frame, longitude, latitude);
-      if (index === 0) context.moveTo(point.x, point.y); else context.lineTo(point.x, point.y);
-    });
-    context.closePath(); context.fill(); context.stroke();
+  if (options.worldLand) {
+    context.globalAlpha = .9;
+    context.drawImage(options.worldLand, frame.x, frame.y, frame.width, frame.height);
+    context.globalAlpha = 1;
+  } else {
+    context.fillStyle = 'rgba(160,116,78,.2)';
+    context.strokeStyle = 'rgba(132,88,58,.22)';
+    context.lineWidth = options.compact ? 1 : 1.4;
+    for (const polygon of WORLD_LAND) {
+      context.beginPath();
+      polygon.forEach(([longitude, latitude], index) => {
+        const point = mapPoint(frame, longitude, latitude);
+        if (index === 0) context.moveTo(point.x, point.y); else context.lineTo(point.x, point.y);
+      });
+      context.closePath(); context.fill(); context.stroke();
+    }
   }
 
   for (const route of routesFromTrail(trail)) {
@@ -332,6 +351,7 @@ export async function renderAtlasCard(trail: TrailStop[], format: ShareCardForma
   const cached = cachedCards.get(key);
   if (cached) return cached;
   await document.fonts.ready;
+  const worldLand = await loadWorldLandImage();
   const [width, height] = shareCardDimensions[format];
   const canvas = document.createElement('canvas');
   canvas.width = width; canvas.height = height;
@@ -351,7 +371,7 @@ export async function renderAtlasCard(trail: TrailStop[], format: ShareCardForma
     context.fillStyle = '#a24e31'; context.letterSpacing = '5px'; drawFittedLabel(context, heading, padding, 176, width - padding * 2, 38, 24, sans); context.letterSpacing = '0px';
     context.fillStyle = '#6c5547'; context.font = `500 22px ${serif}`; context.fillText('A geographic biography, drawn from the places that became home.', padding, 220);
 
-    drawGeographicTrail(context, trail, { x: padding, y: 270, width: width - padding * 2, height: 650 }, { sans });
+    drawGeographicTrail(context, trail, { x: padding, y: 270, width: width - padding * 2, height: 650 }, { sans, worldLand });
     drawFingerprint(context, trail, 814, 846, 148);
 
     const routeBottom = drawStoryRoute(context, trail, { x: padding, y: 1060, maxWidth: width - padding * 2, serif, sans });
@@ -362,7 +382,7 @@ export async function renderAtlasCard(trail: TrailStop[], format: ShareCardForma
   } else if (format === 'square') {
     const padding = 66;
     context.fillStyle = '#a24e31'; context.letterSpacing = '5px'; drawFittedLabel(context, heading, padding, 82, width - padding * 2, 32, 20, sans); context.letterSpacing = '0px';
-    drawGeographicTrail(context, trail, { x: padding, y: 126, width: width - padding * 2, height: 474 }, { sans });
+    drawGeographicTrail(context, trail, { x: padding, y: 126, width: width - padding * 2, height: 474 }, { sans, worldLand });
     drawFingerprint(context, trail, 842, 548, 110);
 
     context.fillStyle = '#3f3028';
@@ -379,7 +399,7 @@ export async function renderAtlasCard(trail: TrailStop[], format: ShareCardForma
     drawStats(context, stats, { x: padding, y: 470, maxWidth: 565, sans, primarySize: 23, secondarySize: 19 });
     drawFooter(context, { x: padding, y: 574, width: 548, sans, serif });
 
-    drawGeographicTrail(context, trail, { x: 674, y: 56, width: 466, height: 472 }, { sans, compact: true });
+    drawGeographicTrail(context, trail, { x: 674, y: 56, width: 466, height: 472 }, { sans, compact: true, worldLand });
     drawFingerprint(context, trail, 1008, 476, 92);
   }
 
@@ -415,6 +435,7 @@ function drawPathLine(context: CanvasRenderingContext2D, trail: OurPathsCardData
 
 export async function renderOurPathsCard(data: OurPathsCardData) {
   await document.fonts.ready;
+  const worldLand = await loadWorldLandImage();
   const width = 1200; const height = 630;
   const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
   const context = canvas.getContext('2d');
@@ -439,8 +460,12 @@ export async function renderOurPathsCard(data: OurPathsCardData) {
   const frame = { x: 574, y: 48, width: 566, height: 534 };
   context.save(); context.beginPath(); context.roundRect(frame.x, frame.y, frame.width, frame.height, 26); context.clip();
   context.fillStyle = 'rgba(255,252,245,.72)'; context.fillRect(frame.x, frame.y, frame.width, frame.height);
-  context.fillStyle = 'rgba(160,116,78,.2)'; context.strokeStyle = 'rgba(132,88,58,.2)'; context.lineWidth = 1;
-  for (const polygon of WORLD_LAND) { context.beginPath(); polygon.forEach(([longitude, latitude], index) => { const point = mapPoint(frame, longitude, latitude); if (!index) context.moveTo(point.x, point.y); else context.lineTo(point.x, point.y); }); context.closePath(); context.fill(); context.stroke(); }
+  if (worldLand) {
+    context.globalAlpha = .9; context.drawImage(worldLand, frame.x, frame.y, frame.width, frame.height); context.globalAlpha = 1;
+  } else {
+    context.fillStyle = 'rgba(160,116,78,.2)'; context.strokeStyle = 'rgba(132,88,58,.2)'; context.lineWidth = 1;
+    for (const polygon of WORLD_LAND) { context.beginPath(); polygon.forEach(([longitude, latitude], index) => { const point = mapPoint(frame, longitude, latitude); if (!index) context.moveTo(point.x, point.y); else context.lineTo(point.x, point.y); }); context.closePath(); context.fill(); context.stroke(); }
+  }
   drawPathLine(context, data.mineTrail, frame, '#b65335');
   drawPathLine(context, data.theirTrail, frame, '#315d70');
   for (const place of data.sharedPlaces) { const point = mapPoint(frame, normalizeLongitude(place.longitude), place.latitude); context.fillStyle = '#d19a43'; context.strokeStyle = '#fffaf0'; context.lineWidth = 4; context.beginPath(); context.arc(point.x, point.y, 11, 0, Math.PI * 2); context.fill(); context.stroke(); }

@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   Check,
   Eye,
-  EyeOff,
   LockKeyhole,
   MapPin,
   Pause,
@@ -11,10 +10,10 @@ import {
   RotateCcw,
   Share2,
   SkipForward,
-  Sparkles,
   Users,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { LifeAtlasMobileNav } from "@/components/LifeAtlasMobileNav";
 import { activePlaceAtYear, approximateDistanceKm, knownYearRange } from "@/lib/our-paths-timeline";
 import {
   MovementSignature,
@@ -35,10 +34,8 @@ export type OurPathsData = {
     requestStatus: string;
   };
   permissions: {
-    compareMine: boolean;
-    compareTheirs: boolean;
-    atlasMine: boolean;
-    atlasTheirs: boolean;
+    friendsSharingMine: boolean;
+    friendsSharingTheirs: boolean;
     externalMine: boolean;
     externalTheirs: boolean;
     compareAllowed: boolean;
@@ -79,52 +76,22 @@ export type OurPathsData = {
   }>;
 };
 
-function PermissionPanel({
+function ExternalSharingPanel({
   data,
   onPermission,
 }: {
   data: OurPathsData;
-  onPermission: (permission: "COMPARE" | "ATLAS" | "EXTERNAL_SHARE", allowed: boolean) => void;
+  onPermission: (permission: "EXTERNAL_SHARE", allowed: boolean) => void;
 }) {
   return (
     <aside className="paths-permission-panel">
       <div>
         <LockKeyhole />
         <div>
-          <strong>Privacy controls</strong>
-          <p>Connection, path comparison, and full Atlas access remain separate.</p>
+          <strong>External sharing</strong>
+          <p>Your friendship already covers this private view. Exporting it is a separate choice.</p>
         </div>
       </div>
-      <button
-        className={data.permissions.compareMine ? "permission-row active" : "permission-row"}
-        onClick={() => onPermission("COMPARE", !data.permissions.compareMine)}
-      >
-        <span>
-          {data.permissions.compareMine ? <Check /> : <Eye />}
-          <span>
-            <strong>Compare our paths</strong>
-            <small>
-              {data.permissions.compareTheirs
-                ? "They have allowed comparison."
-                : "Both people must allow this."}
-            </small>
-          </span>
-        </span>
-        <i>{data.permissions.compareMine ? "Allowed" : "Private"}</i>
-      </button>
-      <button
-        className={data.permissions.atlasMine ? "permission-row active" : "permission-row"}
-        onClick={() => onPermission("ATLAS", !data.permissions.atlasMine)}
-      >
-        <span>
-          {data.permissions.atlasMine ? <Check /> : <EyeOff />}
-          <span>
-            <strong>Share my full Atlas</strong>
-            <small>Revocable and specific to @{data.other.handle}.</small>
-          </span>
-        </span>
-        <i>{data.permissions.atlasMine ? "Shared" : "Private"}</i>
-      </button>
       <button
         className={data.permissions.externalMine ? "permission-row active" : "permission-row"}
         disabled={!data.permissions.compareAllowed}
@@ -133,7 +100,7 @@ function PermissionPanel({
         <span>
           <Share2 />
           <span>
-            <strong>Share Our Paths externally</strong>
+            <strong>Allow an Our Paths card</strong>
             <small>
               {data.permissions.externalTheirs
                 ? "They have allowed sharing. Both people must agree."
@@ -283,6 +250,7 @@ function PathYearPanel({
 }
 
 function SharedAtlasPanel({ data }: { data: OurPathsData }) {
+  const [lightbox, setLightbox] = useState<string | null>(null);
   if (!data.permissions.canViewOtherFullAtlas || !data.theirTrail?.length) return null;
   return (
     <section className="friend-atlas-panel">
@@ -290,17 +258,27 @@ function SharedAtlasPanel({ data }: { data: OurPathsData }) {
         <p className="eyebrow">Shared directly with you</p>
         <h2>{data.other.displayName}’s Life Atlas</h2>
         <p>
-          @{data.other.handle} explicitly shared this chapter route. Memories and photographs remain
-          private.
+          Shared with accepted friends. Anything marked Private by @{data.other.handle} is omitted.
         </p>
       </div>
       <ol>
         {data.theirTrail.map((stop, index) => (
           <li key={`${stop.id}-${index}`}>
             <i />
-            <div>
+            <div className="friend-atlas-copy">
               <strong>{stop.city}</strong>
               <span>{stop.country}</span>
+              {stop.title ? <h3>{stop.title}</h3> : null}
+              {stop.memory ? <p>{stop.memory}</p> : null}
+              {stop.photos?.length ? (
+                <div className="friend-atlas-photos">
+                  {stop.photos.slice(0, 4).map((photo) => (
+                    <button key={photo.id} onClick={() => setLightbox(photo.url)} aria-label={`Open photograph from ${stop.city}`}>
+                      <img src={photo.url} alt={photo.caption || `A chapter photograph from ${stop.city}`} />
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <small>
               {stop.arrivalYear
@@ -311,6 +289,12 @@ function SharedAtlasPanel({ data }: { data: OurPathsData }) {
           </li>
         ))}
       </ol>
+      {lightbox ? (
+        <button className="atlas-photo-lightbox" onClick={() => setLightbox(null)} aria-label="Close photograph">
+          <img src={lightbox} alt="Expanded chapter photograph" />
+          <span>Close</span>
+        </button>
+      ) : null}
     </section>
   );
 }
@@ -333,7 +317,7 @@ export function OurPathsView({
   previewReplay = false,
 }: {
   data: OurPathsData;
-  onPermission: (permission: "COMPARE" | "ATLAS" | "EXTERNAL_SHARE", allowed: boolean) => void;
+  onPermission: (permission: "EXTERNAL_SHARE", allowed: boolean) => void;
   onConfirmMoment: (discovery: PathDiscovery) => void;
   onShare?: () => void;
   onAdditionalFriend?: (handle: string | null) => void;
@@ -361,7 +345,7 @@ export function OurPathsView({
     () =>
       knownYearRange(
         [
-          fullRoutes || additionalFullRoute ? data.mineTrail : null,
+          data.mineTrail,
           fullRoutes ? data.theirTrail : null,
           additionalFullRoute ? data.additional?.trail : null,
         ],
@@ -457,6 +441,7 @@ export function OurPathsView({
 
   return (
     <main className="our-paths-page">
+      <LifeAtlasMobileNav active="circle" />
       <header className="paths-header">
         <Link to="/circle">
           <ArrowLeft />
@@ -465,20 +450,20 @@ export function OurPathsView({
         <Link to="/" className="circle-brand">
           Life Atlas
         </Link>
-        <span>Private comparison</span>
+        <span>Friends-only view</span>
       </header>
       <section className="paths-hero">
         <div className="paths-intro">
           <p className="eyebrow">Our Paths</p>
-          <h1>See where your lives overlapped.</h1>
-          <p>Only geography both people permitted is shown.</p>
+          <h1>Two lives, one living map.</h1>
+          <p>Routes, chapter photographs and shared places — visible only between accepted friends.</p>
           <div className="paths-hero-actions">
             <Link
               to="/atlas/friend/$handle"
               params={{ handle: data.other.handle }}
               className="outline-button"
             >
-              <Eye /> View {data.other.displayName}’s Atlas
+              <Eye /> {data.other.displayName}’s Atlas
             </Link>
             {onShare ? (
               <button
@@ -522,8 +507,8 @@ export function OurPathsView({
             <strong>Friends on this globe</strong>
             <small>
               You + {data.other.displayName}
-              {data.additional ? ` + ${data.additional.profile.displayName}` : ""}. Every route is
-              checked against its own pairwise permissions.
+              {data.additional ? ` + ${data.additional.profile.displayName}` : ""}. Each route keeps
+              its owner’s Friends-only or Private setting.
             </small>
           </span>
         </div>
@@ -549,10 +534,10 @@ export function OurPathsView({
         </label>
         {data.additional && !data.additional.permissions.compareAllowed ? (
           <p>
-            @{data.additional.profile.handle} remains private until both of you allow comparison.
+            @{data.additional.profile.handle} is keeping their Atlas private.
           </p>
         ) : null}
-        {data.additional ? (
+        {data.additional?.permissions.canViewOtherFullAtlas ? (
           <Link
             to="/atlas/friend/$handle"
             params={{ handle: data.additional.profile.handle }}
@@ -564,29 +549,21 @@ export function OurPathsView({
       </section>
 
       {!data.permissions.compareAllowed ? (
-        <section className="paths-locked">
+        <section className="paths-private-note">
           <div className="locked-globe">
-            <ProfileMark handle={data.me.handle} size={100} />
+            <ProfileMark handle={data.me.handle} displayName={data.me.displayName} size={72} />
             <span />
-            <ProfileMark handle={data.other.handle} size={100} />
+            <ProfileMark handle={data.other.handle} displayName={data.other.displayName} avatarUrl={data.other.avatarUrl} size={72} />
           </div>
-          <p className="eyebrow">Comparison private</p>
-          <h2>Path comparison is off.</h2>
+          <div>
+          <p className="eyebrow">Private by choice</p>
+          <h2>{data.other.displayName}’s route is not shared.</h2>
           <p>
-            {data.permissions.compareMine
-              ? `Waiting for ${data.other.displayName} to allow comparison.`
-              : "Both people must allow comparison. A connection alone reveals no places."}
+            Your route remains available to you. If @{data.other.handle} changes their Atlas to Friends-only, this globe updates automatically.
           </p>
-          <button
-            className="primary-button"
-            disabled={data.permissions.compareMine}
-            onClick={() => onPermission("COMPARE", true)}
-          >
-            <Sparkles />
-            {data.permissions.compareMine ? "Comparison requested" : "Compare our paths"}
-          </button>
+          </div>
         </section>
-      ) : (
+      ) : null}
         <>
           <section className="paths-map-stage" id="paths-map">
             <div className="paths-map-heading">
@@ -626,7 +603,7 @@ export function OurPathsView({
             <div className="paths-map-canvas">
               <Suspense fallback={<MapLoading />}>
                 <SocialMapbox
-                  mine={fullRoutes || additionalFullRoute ? (data.mineTrail ?? []) : []}
+                  mine={data.mineTrail ?? []}
                   theirs={fullRoutes ? data.theirTrail! : []}
                   additional={additionalFullRoute ? (data.additional?.trail ?? []) : []}
                   discoveries={data.discoveries}
@@ -639,7 +616,7 @@ export function OurPathsView({
                 />
               </Suspense>
             </div>
-            {timelineRange && activeYear !== null && (fullRoutes || additionalFullRoute) ? (
+            {timelineRange && activeYear !== null && Boolean(data.mineTrail?.length) ? (
               <PathYearPanel
                 min={timelineRange.min}
                 max={timelineRange.max}
@@ -742,9 +719,8 @@ export function OurPathsView({
             ) : null}
           </section>
         </>
-      )}
       <SharedAtlasPanel data={data} />
-      <PermissionPanel data={data} onPermission={onPermission} />
+      <ExternalSharingPanel data={data} onPermission={onPermission} />
     </main>
   );
 }

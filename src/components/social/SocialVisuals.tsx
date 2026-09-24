@@ -14,6 +14,7 @@ export type SocialTrailStop = Pick<
   | "reason"
   | "title"
   | "memory"
+  | "photos"
 >;
 export type PathDiscovery = {
   city: string;
@@ -32,47 +33,32 @@ function project(longitude: number, latitude: number) {
   return { x: ((longitude + 180) / 360) * 1000, y: ((90 - latitude) / 180) * 500 };
 }
 
-export function ProfileMark({ handle, size = 78 }: { handle: string; size?: number }) {
-  const seed = [...handle].reduce((value, letter) => value + letter.charCodeAt(0), 0);
+export function ProfileMark({
+  handle,
+  displayName,
+  avatarUrl,
+  size = 78,
+}: {
+  handle: string;
+  displayName?: string;
+  avatarUrl?: string | null;
+  size?: number;
+}) {
+  const initials = (displayName || handle)
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
   return (
-    <svg
+    <div
       className="social-profile-mark"
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      aria-hidden="true"
+      style={{ width: size, height: Math.round(size * 1.12) }}
+      aria-label={`${displayName || `@${handle}`} profile`}
     >
-      <defs>
-        <radialGradient id={`mark-${seed}`}>
-          <stop stopColor="#fffaf0" />
-          <stop offset="1" stopColor="#e4c69f" />
-        </radialGradient>
-      </defs>
-      <circle
-        cx="50"
-        cy="50"
-        r="47"
-        fill={`url(#mark-${seed})`}
-        stroke="#b86343"
-        strokeOpacity=".28"
-      />
-      {[0, 1, 2].map((ring) => {
-        const radius = 15 + ring * 10;
-        const start = ((seed * (ring + 3)) % 210) - 90;
-        const length = 130 + ((seed + ring * 47) % 130);
-        return (
-          <path
-            key={ring}
-            d={fingerprintArcPath(50, 50, radius, start, length)}
-            fill="none"
-            stroke="#ad5032"
-            strokeWidth={3.8 - ring * 0.45}
-            strokeLinecap="round"
-          />
-        );
-      })}
-      <circle cx="50" cy="50" r="4" fill="#a8482c" />
-    </svg>
+      {avatarUrl ? <img src={avatarUrl} alt="" loading="lazy" /> : <strong>{initials || "LA"}</strong>}
+      <span aria-hidden="true" />
+    </div>
   );
 }
 

@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "project": {
+    "name": "Life Atlas",
+    "productType": "private geographic biography and social memory product",
+    "stack": [
+      "react",
+      "shadcn",
+      "tailwind-v4",
+      "vite"
+    ]
+  },
+  "sources": {
+    "tokens": [],
+    "components": [
+      "src/components/ui"
+    ],
+    "assets": [],
+    "instructions": [
+      "AGENTS.md"
+    ]
+  },
+  "design": {
+    "colorMode": "light",
+    "colors": {
+      "background": "warm ivory oklch(.975 .015 79)",
+      "foreground": "warm charcoal oklch(.275 .037 75)",
+      "primary": "copper oklch(.57 .128 48)",
+      "secondary": "sage oklch(.55 .07 143)",
+      "parchment": "oklch(.954 .028 79)"
+    },
+    "typography": {
+      "interface": "Instrument Sans",
+      "editorial": "Playfair Display"
+    },
+    "spacing": { "pageMax": "1480px", "contentMax": "1280px" },
+    "radius": { "base": ".875rem", "cards": "10px–18px", "pills": "999px" },
+    "shadows": { "soft": "0 18px 55px translucent warm charcoal", "deep": "0 28px 90px translucent warm charcoal" },
+    "motion": { "standard": "200–350ms ease", "reducedMotion": "honored" },
+    "density": "comfortable"
+  },
+  "components": {
+    "installed": [
+      "accordion",
+      "alert",
+      "alert-dialog",
+      "aspect-ratio",
+      "avatar",
+      "badge",
+      "breadcrumb",
+      "button",
+      "calendar",
+      "card",
+      "carousel",
+      "chart",
+      "checkbox",
+      "collapsible",
+      "command",
+      "context-menu",
+      "dialog",
+      "drawer",
+      "dropdown-menu",
+      "form",
+      "hover-card",
+      "input",
+      "input-otp",
+      "label",
+      "menubar",
+      "navigation-menu",
+      "pagination",
+      "popover",
+      "progress",
+      "radio-group",
+      "resizable",
+      "scroll-area",
+      "select",
+      "separator",
+      "sheet",
+      "sidebar",
+      "skeleton",
+      "slider",
+      "sonner",
+      "switch",
+      "table",
+      "tabs",
+      "textarea",
+      "toggle",
+      "toggle-group",
+      "tooltip"
+    ],
+    "preferredPrimitives": [
+      "radix-ui"
+    ],
+    "patterns": []
+  },
+  "constraints": {
+    "must": [
+      "Keep the Mapbox globe as the visual and interaction centerpiece.",
+      "Preserve the warm ivory, copper, sage and editorial typography identity.",
+      "Preserve Movement Fingerprint as a product visualization.",
+      "Use real profile photos when available and rectangular initial tiles otherwise.",
+      "Keep mobile primary actions reachable with a compact bottom navigation.",
+      "Treat Friends-only, individual Private overrides, and external sharing as visibly distinct privacy concepts."
+    ],
+    "avoid": [
+      "Generic circular generated avatars.",
+      "Oversized headings that create empty screens.",
+      "Nested cards for simple rows or repeated permission panels.",
+      "Replacing real geography with decorative map approximations.",
+      "Introducing a second design system or cool corporate palette."
+    ]
+  },
+  "decisions": [
+    "Adapted interaction patterns from 21st.dev Interactive Timeline, Filmstrip Gallery, Masonry Lightbox, Bottom Nav Bar, Team Profile Grid, Location Card and Map Controls while retaining Life Atlas styling.",
+    "Chapter timelines use a strong active rail, larger photographic previews and direct editing actions.",
+    "Life Circle is a compact people-and-requests workspace, not a dashboard of permission cards.",
+    "Our Paths leads with the combined globe and uses distinct copper, blue and violet routes with a shared-place gold.",
+    "Share cards use the bundled Natural Earth 110m geometry and never include personal photographs unless a future explicit opt-in is provided."
+  ],
+  "evidence": [
+    {
+      "fact": "components.installed",
+      "source": "src/components/ui"
+    },
+    {
+      "fact": "project.instructions",
+      "source": "AGENTS.md"
+    },
+    {
+      "fact": "project.stack:react",
+      "source": "package.json"
+    },
+    {
+      "fact": "project.stack:shadcn",
+      "source": "components.json"
+    },
+    {
+      "fact": "project.stack:tailwind-v4",
+      "source": "package.json"
+    },
+    {
+      "fact": "project.stack:vite",
+      "source": "package.json"
+    }
+  ],
+  "generatedAt": "2026-09-23T20:42:18.747Z"
+}
