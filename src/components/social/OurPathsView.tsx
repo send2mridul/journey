@@ -94,6 +94,7 @@ function ExternalSharingPanel({
       </div>
       <button
         className={data.permissions.externalMine ? "permission-row active" : "permission-row"}
+        aria-pressed={data.permissions.externalMine}
         disabled={!data.permissions.compareAllowed}
         onClick={() => onPermission("EXTERNAL_SHARE", !data.permissions.externalMine)}
       >
@@ -208,7 +209,7 @@ function PathYearPanel({
       <div className="paths-year-heading">
         <span>Recorded year</span>
         <time>{year}</time>
-        <div>
+        <div className="paths-playback-controls" role="group" aria-label="Timeline playback controls">
           <button aria-label={playing ? "Pause timeline" : "Play timeline"} onClick={onToggle}>
             {playing ? <Pause /> : <Play />}
           </button>

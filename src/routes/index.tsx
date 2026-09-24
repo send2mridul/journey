@@ -46,6 +46,7 @@ import { SharePreviewDialog } from '@/components/SharePreviewDialog';
 import { ChapterPeoplePanel, type ChapterPerson } from '@/components/social/ChapterPeoplePanel';
 import { ChapterAtlasFallback } from '@/components/social/SocialVisuals';
 import { LifeAtlasMobileNav } from '@/components/LifeAtlasMobileNav';
+import { PremiumSegmentedControl } from '@/components/PremiumSegmentedControl';
 import { addChapterPerson, getChapterFriendOptions, getChapterPeople, getSocialSession } from '@/server/social';
 
 const AtlasMap = lazy(() => import('@/components/AtlasMap'));
@@ -797,7 +798,7 @@ function ExploreAtlas() {
         <div className="pointer-events-auto"><p className="eyebrow">World patterns · {yearTo}</p><h2 className="mt-3 font-editorial text-5xl md:text-7xl">World in motion.</h2><p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">Explore where international migrants from a country live—or where people living there came from. These are migrant stock estimates, not annual moves.</p></div>
         <div className="world-controls pointer-events-auto">
           <CountrySearch countries={worldMeta.countries} value={worldCountry} onSelect={setWorldCountry} />
-          <div className="perspective-toggle"><button className={perspective === 'from' ? 'active' : ''} onClick={() => setPerspective('from')}>From this place</button><button className={perspective === 'to' ? 'active' : ''} onClick={() => setPerspective('to')}>To this place</button></div>
+          <PremiumSegmentedControl label="Migration perspective" options={[{ value: 'from', label: 'From this place' }, { value: 'to', label: 'To this place' }]} value={perspective} onValueChange={setPerspective} />
           {worldCountry && <button className="text-button" onClick={() => setWorldCountry(null)}>Show global view</button>}
         </div>
         <div className="world-ranking pointer-events-auto"><p className="eyebrow">{worldCountry ? perspective === 'from' ? `Leading destinations from ${worldCountry.name}` : `Leading origins into ${worldCountry.name}` : 'Largest country connections'}</p>{worldRoutes.slice(0, 5).map((route, index) => <div key={`${route.from.id}-${route.to.id}`}><span>{String(index + 1).padStart(2, '0')}</span><strong>{perspective === 'to' && worldCountry ? route.from.city : route.to.city}</strong><b>{route.volume.toLocaleString()}</b></div>)}</div>
@@ -817,7 +818,7 @@ function ExploreAtlas() {
       <div className="pointer-events-auto"><p className="eyebrow">Life Atlas community</p><h2 className="mt-3 font-editorial text-5xl md:text-7xl">Real paths, safely combined.</h2><p className="mt-4 max-w-lg text-sm leading-6 text-muted-foreground">Only anonymous aggregate patterns supported by at least five separately opted-in Atlases appear here. No personal journey is exposed.</p></div>
       <div className="community-explore-control pointer-events-auto">
         <PlaceSearch label="Search one city" value={focus} onSelect={setFocus} icon={<Search />} />
-        <div className="perspective-toggle"><button className={perspective === 'from' ? 'active' : ''} onClick={() => setPerspective('from')}>From this place</button><button className={perspective === 'to' ? 'active' : ''} onClick={() => setPerspective('to')}>To this place</button></div>
+        <PremiumSegmentedControl label="Community route perspective" options={[{ value: 'from', label: 'From this place' }, { value: 'to', label: 'To this place' }]} value={perspective} onValueChange={setPerspective} />
         {focus && <button className="text-button" onClick={() => setFocus(null)}>Clear</button>}
       </div>
       <div className="mt-auto grid items-end gap-4 lg:grid-cols-[.55fr_1fr]">
